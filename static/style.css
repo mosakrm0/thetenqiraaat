@@ -1134,6 +1134,49 @@ body::after {
 #toast.show { transform: translateX(-50%) translateY(0); }
 
 /* ═══════════════════════════════════════════════════════════════
+   تجاوب — تابلت واسع (≤ 1100px)
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 1100px) {
+  #topbar {
+    height: auto;
+    min-height: var(--topbar-h);
+    padding: 8px 12px;
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .tabs {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .tabs::-webkit-scrollbar {
+    height: 3px;
+  }
+
+  .tabs::-webkit-scrollbar-thumb {
+    background: var(--gold-dk);
+    border-radius: 3px;
+  }
+
+  .tab {
+    flex: 0 0 auto;
+  }
+
+  .tb-info {
+    order: 2;
+    margin-right: auto;
+    min-width: 160px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
    تجاوب — تابلت (≤ 900px)
    ═══════════════════════════════════════════════════════════════ */
 @media (max-width: 900px) {
@@ -1218,11 +1261,16 @@ body::after {
 
   /* تحسين الشريط العلوي */
   #topbar {
-    padding: 0 10px;
+    padding: 8px 10px;
     gap: 8px;
   }
 
   .tb-info { display: none; } /* يُعرض في مكان آخر على الجوال */
+
+  .tabs {
+    order: 2;
+    width: 100%;
+  }
 
   /* تبسيط شريط القراءات */
   #qiraat-bar {
@@ -1311,7 +1359,7 @@ body::after {
    تجاوب — جوال صغير (≤ 400px)
    ═══════════════════════════════════════════════════════════════ */
 @media (max-width: 400px) {
-  #topbar { gap: 6px; padding: 0 8px; }
+  #topbar { gap: 6px; padding: 8px 8px; }
 
   #toggle-sb,
   #theme-toggle { width: 32px; height: 32px; font-size: .85rem; }

@@ -74,9 +74,9 @@ const QIRAAT_UI = {
   douri:   { name: 'أبو عمرو - الدوري',    color: '#7aad4c', reciter: 'رواية الدوري',
              rewayaId: 13 },
 
-  // السوسي — EveryAyah: علي الحجاج السويسي
+  // السوسي — نثبت على مصدر rewaya لتفادي أي عدم تطابق في الرواية
   susi:    { name: 'أبو عمرو - السوسي',    color: '#5bc0a3', reciter: 'رواية السوسي',
-             everyAyah: 'Ali_Hajjaj_AlSuesy_128kbps', rewayaId: 7 },
+             rewayaId: 7 },
 
   // هشام — mp3quran fallback
   hisham:  { name: 'ابن عامر - هشام',      color: '#9c4cc9', reciter: 'رواية هشام',
