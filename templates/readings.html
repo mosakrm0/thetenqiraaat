@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>مقارنة القراءات القرآنية</title>
+<link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:wght@400;700&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+
+  <div id="sidebar">
+    <div class="sb-head">
+      <button class="sb-close-btn" onclick="toggleSB()" aria-label="إغلاق القائمة" title="إغلاق القائمة">✕</button>
+      <div class="logo">
+        <span class="logo-icon">☽</span>
+        <div>
+          <div class="logo-title">مقارنة القراءات والترجمات القرآنية</div>
+          <div class="logo-sub">١١٤ سورة · نصًّا وصوتًا</div>
+        </div>
+      </div>
+      <div class="sb-search">
+        <span class="sb-search-ic"></span>
+        <input type="text" id="sb-q" placeholder="ابحث عن سورة..." oninput="filterSurahs(this.value)">
+      </div>
+    </div>
+    <div id="surah-list">
+      <div class="loader"><div class="loader-ring"></div><div class="loader-txt">جاري التحميل...</div></div>
+    </div>
+  </div>
+
+  <div id="main">
+
+    <div id="topbar">
+      <button id="toggle-sb" onclick="toggleSB()">☰</button>
+      <button id="theme-toggle" onclick="toggleTheme()" aria-label="تبديل الوضع" title="تبديل الوضع">☀️</button>
+      <div class="tabs">
+        <button class="tab active" data-tab="mushaf" onclick="switchTab('mushaf')">📖 صفحة المصحف</button>
+        <button class="tab" data-tab="compare" onclick="switchTab('compare')">⚖️ مقارنة جانبية</button>
+        <a class="tab" href="/translations" style="text-decoration:none;display:inline-flex;align-items:center">↩ صفحة الترجمات</a>
+        <a class="tab" href="/feedback" style="text-decoration:none;display:inline-flex;align-items:center">✉️ تواصل واقتراحات</a>
+      </div>
+      <div class="tb-info">
+        <div class="tb-name" id="tb-name">اختر سورة</div>
+        <div class="tb-meta" id="tb-meta">—</div>
+      </div>
+    </div>
+
+    <div id="qiraat-bar">
+      <button class="qbar-toggle" id="qbar-toggle" onclick="toggleQiraatBar()" aria-expanded="true">إخفاء الأدوات</button>
+      <div class="range-wrap">
+        <span>من</span>
+        <input type="number" class="r-input" id="r-start" min="1" value="1">
+        <span>إلى</span>
+        <input type="number" class="r-input" id="r-end" min="1" value="7">
+        <button class="btn-go" onclick="loadContent()">عرض</button>
+      </div>
+      <div class="q-note">القراءات المؤشرة بـ «نص حفص» تعرض النص العثماني كبديل مؤقت لعدم توفر نصها الخاص رقمياً.</div>
+    </div>
+
+    <div id="content">
+      <div class="empty-state">
+        <span class="empty-icon">☽</span>
+        <div class="empty-title">اختر سورة من القائمة</div>
+        <div class="empty-sub">ثم اضغط «عرض» لمشاهدة الآيات ومقارنة القراءات</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="/static/audio-segmentation.js"></script>
+<script src="/static/script.js"></script>
+</body>
+</html>

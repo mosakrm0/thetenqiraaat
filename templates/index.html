@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>الصفحة الرئيسية</title>
+<link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:wght@400;700&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main class="landing-wrap">
+  <header class="hero">
+    <button class="landing-theme-toggle" id="landing-theme-toggle" type="button" aria-label="الوضع الداكن" title="الوضع الداكن">🌙</button>
+    <h1>اختر تجربة المقارنة</h1>
+    <p class="hero-sub">اختر القسم الذي تريد الدخول إليه.</p>
+  </header>
+
+  <section class="choice-grid" aria-label="خيارات المقارنة">
+    <a class="choice-card" href="/readings">
+      <h2>مقارنة القراءات</h2>
+      <p>قارن نص الآيات بين القراءات المتاحة آية بآية داخل نفس السورة، مع إمكانية التنقل السريع بين الآيات والاستماع للصوت حسب المصدر المتوفر لكل قراءة.</p>
+    </a>
+
+    <a class="choice-card" href="/translations">
+      <h2>مقارنة الترجمات</h2>
+      <p>اختر الترجمات المتوفرة وقارنها بشكل واضح ومباشر لفهم الفروق في المعاني، مع عرض منظم يسهل القراءة والمتابعة آية بآية.</p>
+    </a>
+  </section>
+
+  <footer class="landing-foot">
+    <a href="/feedback">تواصل واقتراحات</a>
+  </footer>
+</main>
+<script>
+  (function () {
+    const THEME_KEY = 'qiraat-theme';
+    const root = document.documentElement;
+    const btn = document.getElementById('landing-theme-toggle');
+
+    function applyTheme(theme) {
+      const safeTheme = theme === 'dark' ? 'dark' : 'light';
+      root.setAttribute('data-theme', safeTheme);
+      if (!btn) return;
+      const isLight = safeTheme === 'light';
+      btn.textContent = isLight ? '🌙' : '☀️';
+      btn.title = isLight ? 'الوضع الداكن' : 'الوضع الفاتح';
+      btn.setAttribute('aria-label', btn.title);
+    }
+
+    const saved = localStorage.getItem(THEME_KEY);
+    const initialTheme = saved === 'dark' ? 'dark' : 'light';
+    applyTheme(initialTheme);
+
+    if (btn) {
+      btn.addEventListener('click', function () {
+        const now = root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+        const next = now === 'dark' ? 'light' : 'dark';
+        localStorage.setItem(THEME_KEY, next);
+        applyTheme(next);
+      });
+    }
+  })();
+</script>
+</body>
+</html>

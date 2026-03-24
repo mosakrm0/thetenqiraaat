@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>تواصل واقتراحات</title>
+<link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:wght@400;700&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+  <div id="main" style="width:100%">
+    <div id="topbar">
+      <a class="tab" href="/" style="text-decoration:none;display:inline-flex;align-items:center">🏠 الصفحة الرئيسية</a>
+      <a class="tab" href="/readings" style="text-decoration:none;display:inline-flex;align-items:center">↩ صفحة القراءات</a>
+      <a class="tab" href="/translations" style="text-decoration:none;display:inline-flex;align-items:center">↩ صفحة الترجمات</a>
+      <button id="theme-toggle" onclick="toggleTheme()" aria-label="تبديل الوضع" title="تبديل الوضع">☀️</button>
+      <div class="tb-info">
+        <div class="tb-name">تواصل واقتراحات</div>
+        <div class="tb-meta">أرسل شكوى، اقتراح، أو أي رسالة مباشرة</div>
+      </div>
+    </div>
+
+    <div id="content" style="padding:18px 16px">
+      <section class="feedback-wrap">
+        <h1 class="feedback-title">كيف يمكننا تحسين الموقع؟</h1>
+        <p class="feedback-sub">للتواصل السريع، راسلني مباشرة على الإيميل التالي:</p>
+
+        <div class="fb-direct-contact">
+          <span>للتواصل المباشر:</span>
+          <a href="mailto:mosakram0@gmail.com" class="fb-email-link">mosakram0@gmail.com</a>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="/static/feedback.js"></script>
+</body>
+</html>
