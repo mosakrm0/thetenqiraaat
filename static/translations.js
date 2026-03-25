@@ -1,9 +1,10 @@
+const API_BASE = 'https://api.alquran.cloud/v1';
 const THEME_KEY = 'qiraat-theme';
 
 let allSurahs = [];
 let curSurah = null;
 let catalog = [];
-let selected = new Set(['hafs']);
+let selected = new Set(['hafs_ar_text']);
 let activeTab = 'mushaf';
 let audios = {};
 
@@ -207,7 +208,7 @@ function filterSurahs(q) {
 }
 
 async function loadSurahs() {
-  const d = await jget('/api/surahs');
+  const d = await jget(`${API_BASE}/surah`);
   allSurahs = d.data || [];
   renderList(allSurahs);
 }
@@ -278,7 +279,7 @@ function buildChips() {
     const c = document.createElement('div');
     c.className = `q-chip${selected.has(item.key) ? ' on' : ''}`;
     c.dataset.key = item.key;
-    c.innerHTML = `<span class="dot" style="background:#c9a84c"></span>${esc(item.name || languageLabel(item.language))}`;
+    c.innerHTML = `<span class="dot" style="background:#c9a84c"></span>${esc(languageLabel(item.language))}`;
     c.onclick = () => {
       const lang = item.language || '';
       if (selected.has(item.key)) {
@@ -297,11 +298,10 @@ function buildChips() {
 
 async function loadCatalog() {
   const d = await jget('/api/translations/catalog');
-  catalog = (d.items || []).filter(x => x.mode === 'ayah-text');
+  catalog = (d.items || []).filter(x => x.mode === 'ayah-text' && x.has_audio);
 
-  if (!catalog.find(x => x.key === 'hafs') && catalog[0]) {
-    selected = new Set([catalog[0].key]);
-  }
+  const en = catalog.find(x => (x.language || '') === 'en');
+  if (en) selected.add(en.key);
 
   buildChips();
 }
@@ -333,7 +333,7 @@ async function pickSurah(num) {
 }
 
 function entryLabel(e) {
-  return e.name || languageLabel(e.language);
+  return languageLabel(e.language);
 }
 
 function normalizeRange(maxAyah) {

@@ -12,6 +12,7 @@ const SA = [0,7,293,493,669,789,954,1160,1235,1364,1473,1596,1707,1750,1802,1901
   6480,6498,6516,6542,6592,6608,6621,6638,6656,6671,6708,6714,6733,6749,6763,6774,
   6785,6802,6811,6829];
 
+const API_BASE         = 'https://api.alquran.cloud/v1';
 const MP3QURAN_BASE    = 'https://mp3quran.net/api/v3';
 const CACHE_PREFIX     = 'qiraat-cache-v3:';
 const THEME_KEY        = 'qiraat-theme';
@@ -55,7 +56,7 @@ const QIRAAT_UI = {
 
   // شعبة — mp3quran fallback
   shouba:  { name: 'عاصم - شعبة',          color: '#f0a23a', reciter: 'رواية شعبة',
-             },
+             rewayaId: 15 },
 
   // قالون — mp3quran fallback
   qaloon:  { name: 'نافع - قالون',         color: '#c9a84c', reciter: 'رواية قالون',
@@ -67,7 +68,7 @@ const QIRAAT_UI = {
 
   // قنبل — mp3quran fallback
   qumbul:  { name: 'ابن كثير - قنبل',      color: '#5f7ad9', reciter: 'رواية قنبل',
-             },
+             rewayaId: 6 },
 
   // الدوري — mp3quran fallback
   douri:   { name: 'أبو عمرو - الدوري',    color: '#7aad4c', reciter: 'رواية الدوري',
@@ -220,7 +221,7 @@ function buildChips() {
 // ── surah list ─────────────────────────────────────────────────────────────────
 async function loadSurahs() {
   try {
-    const d = await getCachedJson({ key: 'surah-list', url: '/api/surahs', ttlMs: SURAH_LIST_TTL, retries: 3 });
+    const d = await getCachedJson({ key: 'surah-list', url: `${API_BASE}/surah`, ttlMs: SURAH_LIST_TTL, retries: 3 });
     allSurahs = d.data;
     renderList(allSurahs);
   } catch { toast('تعذّر تحميل السور'); }
@@ -247,11 +248,8 @@ async function pickSurah(num) {
   document.getElementById('r-start').value = 1;
   document.getElementById('r-end').value   = Math.min(max, 7);
   document.getElementById('tb-name').textContent = curSurah.name;
-  const revelationLabel = curSurah.revelationType === 'Meccan'
-    ? 'مكية'
-    : (curSurah.revelationType === 'Medinan' ? 'مدنية' : '—');
   document.getElementById('tb-meta').textContent =
-    `${curSurah.englishName} · ${revelationLabel} · ${max} آية`;
+    `${curSurah.englishName} · ${curSurah.revelationType === 'Meccan' ? 'مكية' : 'مدنية'} · ${max} آية`;
   renderList(filterArr(document.getElementById('sb-q').value));
   await loadContent();
 }
@@ -534,7 +532,7 @@ function renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags,
       <span class="orn r">❧</span><span class="orn l">❧</span>
       ${showB && !isF ? '<span class="basmala">بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ</span>' : ''}
       <div class="mushaf-sname">${curSurah.name}</div>
-      <div class="mushaf-smeta">${curSurah.englishName} · ${(curSurah.revelationType === 'Meccan' ? 'مكية' : (curSurah.revelationType === 'Medinan' ? 'مدنية' : '—'))} · ${curSurah.numberOfAyahs} آية</div>`;
+      <div class="mushaf-smeta">${curSurah.englishName} · ${curSurah.revelationType === 'Meccan' ? 'مكية' : 'مدنية'} · ${curSurah.numberOfAyahs} آية</div>`;
 
   const surahModeQiraat = chosen.filter(q => audioSources[q.key]?.mode === 'surah');
   if (surahModeQiraat.length) {

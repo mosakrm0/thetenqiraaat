@@ -88,10 +88,10 @@ QF_QIRAA_HINTS = {
 QIRAAT = [
     {"key": "hafs",    "textId": "quran-uthmani",        "source": "alquran", "fallback": False, "qfPublicId": 7,    "rewayaId": None},
     {"key": "warsh",   "textId": "warsh",                "source": "kfgqpc",  "fallback": False, "qfPublicId": None, "rewayaId": 5},
-    {"key": "shouba",  "textId": "shouba",               "source": "kfgqpc",  "fallback": False, "qfPublicId": None, "rewayaId": None},
+    {"key": "shouba",  "textId": "shouba",               "source": "kfgqpc",  "fallback": False, "qfPublicId": None, "rewayaId": 15},
     {"key": "qaloon",  "textId": "qaloon",               "source": "kfgqpc",  "fallback": False, "qfPublicId": None, "rewayaId": 5},
     {"key": "bazzi",   "textId": "bazzi",                "source": "kfgqpc",  "fallback": False, "qfPublicId": None, "rewayaId": 4},
-    {"key": "qumbul",  "textId": "qumbul",               "source": "kfgqpc",  "fallback": False, "qfPublicId": None, "rewayaId": None},
+    {"key": "qumbul",  "textId": "qumbul",               "source": "kfgqpc",  "fallback": False, "qfPublicId": None, "rewayaId": 6},
     {"key": "douri",   "textId": "douri",                "source": "kfgqpc",  "fallback": False, "qfPublicId": None, "rewayaId": 13},
     {"key": "susi",    "textId": "susi",                 "source": "kfgqpc",  "fallback": False, "qfPublicId": None, "rewayaId": 7},
     {"key": "hisham",  "textId": "quran-uthmani",        "source": "alquran", "fallback": True,  "qfPublicId": None, "rewayaId": 14},
@@ -100,47 +100,6 @@ QIRAAT = [
     {"key": "wardan",  "textId": "quran-uthmani",        "source": "alquran", "fallback": True,  "qfPublicId": None, "rewayaId": 12},
     {"key": "ruways",  "textId": "quran-uthmani",        "source": "alquran", "fallback": True,  "qfPublicId": None, "rewayaId": 15},
     {"key": "ishaq",   "textId": "quran-uthmani",        "source": "alquran", "fallback": True,  "qfPublicId": None, "rewayaId": 16},
-]
-
-QIRAA_LABELS_AR = {
-    'hafs': 'عاصم - حفص',
-    'warsh': 'نافع - ورش',
-    'shouba': 'عاصم - شعبة',
-    'qaloon': 'نافع - قالون',
-    'bazzi': 'ابن كثير - البزي',
-    'qumbul': 'ابن كثير - قنبل',
-    'douri': 'أبو عمرو - الدوري',
-    'susi': 'أبو عمرو - السوسي',
-    'hisham': 'ابن عامر - هشام',
-    'khallad': 'حمزة - خلاد',
-    'harith': 'الكسائي - أبو الحارث',
-    'wardan': 'أبو جعفر - ابن وردان',
-    'ruways': 'يعقوب - رويس',
-    'ishaq': 'خلف العاشر - إسحاق',
-}
-
-LOCAL_SURAH_NAMES_AR = [
-    'الفاتحة', 'البقرة', 'آل عمران', 'النساء', 'المائدة', 'الأنعام', 'الأعراف', 'الأنفال', 'التوبة',
-    'يونس', 'هود', 'يوسف', 'الرعد', 'إبراهيم', 'الحجر', 'النحل', 'الإسراء', 'الكهف', 'مريم', 'طه',
-    'الأنبياء', 'الحج', 'المؤمنون', 'النور', 'الفرقان', 'الشعراء', 'النمل', 'القصص', 'العنكبوت',
-    'الروم', 'لقمان', 'السجدة', 'الأحزاب', 'سبأ', 'فاطر', 'يس', 'الصافات', 'ص', 'الزمر', 'غافر',
-    'فصلت', 'الشورى', 'الزخرف', 'الدخان', 'الجاثية', 'الأحقاف', 'محمد', 'الفتح', 'الحجرات', 'ق',
-    'الذاريات', 'الطور', 'النجم', 'القمر', 'الرحمن', 'الواقعة', 'الحديد', 'المجادلة', 'الحشر',
-    'الممتحنة', 'الصف', 'الجمعة', 'المنافقون', 'التغابن', 'الطلاق', 'التحريم', 'الملك', 'القلم',
-    'الحاقة', 'المعارج', 'نوح', 'الجن', 'المزمل', 'المدثر', 'القيامة', 'الإنسان', 'المرسلات',
-    'النبأ', 'النازعات', 'عبس', 'التكوير', 'الانفطار', 'المطففين', 'الانشقاق', 'البروج', 'الطارق',
-    'الأعلى', 'الغاشية', 'الفجر', 'البلد', 'الشمس', 'الليل', 'الضحى', 'الشرح', 'التين', 'العلق',
-    'القدر', 'البينة', 'الزلزلة', 'العاديات', 'القارعة', 'التكاثر', 'العصر', 'الهمزة', 'الفيل',
-    'قريش', 'الماعون', 'الكوثر', 'الكافرون', 'النصر', 'المسد', 'الإخلاص', 'الفلق', 'الناس',
-]
-
-AYAH_COUNTS = [
-    7, 286, 200, 176, 120, 165, 206, 75, 129, 109, 123, 111, 43, 52, 99, 128, 111, 110, 98, 135,
-    112, 78, 118, 64, 77, 227, 93, 88, 69, 60, 34, 30, 73, 54, 45, 83, 182, 88, 75, 85,
-    54, 53, 89, 59, 37, 35, 38, 29, 18, 45, 60, 49, 62, 55, 78, 96, 29, 22, 24, 13,
-    14, 11, 11, 18, 12, 12, 30, 52, 52, 44, 28, 28, 20, 56, 40, 31, 50, 40, 46, 42,
-    29, 19, 36, 25, 22, 17, 19, 26, 30, 20, 15, 21, 11, 8, 8, 19, 5, 8, 8, 11,
-    11, 8, 3, 9, 5, 4, 7, 3, 6, 3, 5, 4, 5, 6,
 ]
 
 ALLOWED_AUDIO_HOSTS = {
@@ -198,45 +157,6 @@ def get_db_connection():
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     return conn
-
-
-def local_surahs_catalog() -> list[dict]:
-    counts = {}
-    conn = get_db_connection()
-    try:
-        c = conn.cursor()
-        c.execute('SELECT surah, MAX(ayah) AS cnt FROM ayahs GROUP BY surah ORDER BY surah')
-        for row in c.fetchall():
-            counts[int(row['surah'])] = int(row['cnt'] or 0)
-    finally:
-        conn.close()
-
-    items = []
-    for idx in range(1, 115):
-        fallback_count = AYAH_COUNTS[idx - 1] if idx - 1 < len(AYAH_COUNTS) else 0
-        items.append({
-            'number': idx,
-            'name': LOCAL_SURAH_NAMES_AR[idx - 1],
-            'englishName': f'Surah {idx}',
-            'numberOfAyahs': counts.get(idx, fallback_count),
-            'revelationType': 'Unknown',
-        })
-    return items
-
-
-def local_translations_catalog() -> list[dict]:
-    return [{
-        'key': q['key'],
-        'source': 'local-db',
-        'edition': q['textId'],
-        'name': QIRAA_LABELS_AR.get(q['key'], q['key']),
-        'englishName': q['key'],
-        'language': '',
-        'direction': 'rtl',
-        'mode': 'ayah-text',
-        'audio_subfolder': None,
-        'has_audio': False,
-    } for q in QIRAAT]
 
 
 def init_db():
@@ -771,7 +691,101 @@ def fetch_fawaz_edition_ayahs(surah_id: int, edition: str) -> tuple[dict, str | 
 
 
 def unified_translations_catalog() -> list[dict]:
-    return local_translations_catalog()
+    catalog = [{
+        'key': 'hafs_ar_text',
+        'source': 'alquran',
+        'edition': 'quran-uthmani',
+        'name': 'العربية - حفص (نص)',
+        'englishName': 'Arabic Hafs (Text)',
+        'language': 'ar',
+        'direction': 'rtl',
+        'mode': 'ayah-text',
+        'audio_subfolder': 'Alafasy_128kbps',
+        'has_audio': True,
+    }]
+
+    alquran_by_edition = {}
+    alquran_by_lang = {}
+    fawaz_by_lang = {}
+    try:
+        for row in alquran_translation_editions():
+            edition = str(row.get('edition') or '')
+            lang = _normalize_lang_code(row.get('language'))
+            if edition:
+                alquran_by_edition[edition] = row
+            if lang and lang not in alquran_by_lang:
+                alquran_by_lang[lang] = row
+    except Exception as exc:
+        logger.warning('alquran translation catalog failed: %s', exc)
+
+    try:
+        for row in fawaz_translation_editions():
+            lang = _normalize_lang_code(row.get('language'))
+            if lang and lang not in fawaz_by_lang:
+                fawaz_by_lang[lang] = row
+    except Exception as exc:
+        logger.warning('fawaz translation catalog failed: %s', exc)
+
+    # Prefer specific editions when known, then general language fallback.
+    preferred_alquran_editions = {
+        'en': ['en.sahih'],
+        'fa': ['fa.fooladvand', 'fa.makarem'],
+        'bs': ['bs.korkut'],
+        'ur': ['ur.jalandhry'],
+    }
+
+    everyayah_by_lang = {}
+    try:
+        for track in everyayah_translation_tracks():
+            lang = _normalize_lang_code(track.get('language'))
+            if not lang or lang == 'ar':
+                continue
+            if lang not in everyayah_by_lang:
+                everyayah_by_lang[lang] = track
+    except Exception as exc:
+        logger.warning('everyayah translation catalog failed: %s', exc)
+
+    preferred_track_id_by_lang = {
+        'en': 45,
+        'fa': 48,
+        'ur': 63,
+        'az': 50,
+        'bs': 72,
+    }
+
+    for lang, tid in preferred_track_id_by_lang.items():
+        tr = everyayah_find_track(tid)
+        if tr:
+            everyayah_by_lang[lang] = tr
+
+    for lang in sorted(everyayah_by_lang.keys()):
+        try:
+            text_row = None
+
+            for edition in preferred_alquran_editions.get(lang, []):
+                text_row = alquran_by_edition.get(edition)
+                if text_row:
+                    break
+
+            if not text_row:
+                text_row = alquran_by_lang.get(lang)
+            if not text_row:
+                text_row = fawaz_by_lang.get(lang)
+
+            if not text_row:
+                continue
+
+            track = everyayah_by_lang[lang]
+            catalog.append({
+                **text_row,
+                'language': lang,
+                'audio_subfolder': track.get('subfolder'),
+                'has_audio': True,
+            })
+        except Exception as exc:
+            logger.warning('translation language skipped (%s): %s', lang, exc)
+
+    return catalog
 
 
 # ── text fetching ──────────────────────────────────────────────────────────────
@@ -938,11 +952,6 @@ def translations_catalog():
     return jsonify({'available': True, 'items': unified_translations_catalog()})
 
 
-@app.route('/api/surahs')
-def surahs_catalog():
-    return jsonify({'data': local_surahs_catalog()})
-
-
 @app.route('/api/translations/surah/<int:surah_id>')
 def translations_surah(surah_id):
     """
@@ -957,9 +966,9 @@ def translations_surah(surah_id):
     keys_q = (request.args.get('keys') or '').strip()
     req_keys = [x.strip() for x in keys_q.split(',') if x.strip()]
     if not req_keys:
-        req_keys = ['hafs']
+        req_keys = ['hafs_ar_text']
 
-    catalog = {item['key']: item for item in local_translations_catalog()}
+    catalog = {item['key']: item for item in unified_translations_catalog()}
 
     # Enforce one translation per language.
     filtered_keys = []
@@ -977,20 +986,8 @@ def translations_surah(surah_id):
         filtered_keys.append(key)
     req_keys = filtered_keys
 
-    conn = get_db_connection()
-    try:
-        c = conn.cursor()
-        c.execute('SELECT ayah, qiraa, text FROM ayahs WHERE surah = ? ORDER BY ayah', (surah_id,))
-        rows = c.fetchall()
-    finally:
-        conn.close()
-
-    by_qiraa: dict[str, dict[int, str]] = {}
-    for row in rows:
-        by_qiraa.setdefault(row['qiraa'], {})[int(row['ayah'])] = row['text']
-
-    max_ayah = max((max(m.keys()) for m in by_qiraa.values() if m), default=AYAH_COUNTS[surah_id - 1])
     result = {}
+    max_ayah = 0
     for key in req_keys:
         meta = catalog.get(key)
         if not meta:
@@ -1002,19 +999,92 @@ def translations_surah(surah_id):
             }
             continue
 
-        ayahs = by_qiraa.get(key, {})
-        fetch_status = 'fetched' if ayahs else 'unavailable'
+        source = meta.get('source')
+        mode = meta.get('mode') or 'ayah-text'
+
+        if mode == 'ayah-audio' and source == 'everyayah':
+            try:
+                track_id = int(meta.get('trackId'))
+                track = everyayah_find_track(track_id)
+                if not track:
+                    raise ValueError('Track not found')
+                ayah_count = everyayah_ayah_count_for_surah(surah_id)
+                ayah_map = {
+                    i: everyayah_build_ayah_url(track['subfolder'], surah_id, i)
+                    for i in range(1, ayah_count + 1)
+                }
+                max_ayah = max(max_ayah, ayah_count)
+                result[key] = {
+                    'key': key,
+                    'mode': 'ayah-audio',
+                    'name': meta.get('name'),
+                    'source': source,
+                    'language': meta.get('language', ''),
+                    'direction': meta.get('direction', 'ltr'),
+                    'fetch_status': 'fetched',
+                    'ayah_map': ayah_map,
+                    'ayah_count': ayah_count,
+                    'error': None,
+                }
+            except Exception as exc:
+                result[key] = {
+                    'key': key,
+                    'mode': 'ayah-audio',
+                    'name': meta.get('name'),
+                    'source': source,
+                    'language': meta.get('language', ''),
+                    'direction': meta.get('direction', 'ltr'),
+                    'fetch_status': 'error',
+                    'error': str(exc),
+                }
+            continue
+
+        if key == 'hafs_ar_text':
+            ayahs, err = fetch_alquran_edition_ayahs(surah_id, 'quran-uthmani')
+        elif source == 'alquran':
+            ayahs, err = fetch_alquran_edition_ayahs(surah_id, str(meta.get('edition') or ''))
+        elif source == 'fawaz':
+            ayahs, err = fetch_fawaz_edition_ayahs(surah_id, str(meta.get('edition') or ''))
+        else:
+            ayahs, err = {}, 'Unsupported translation source'
+
+        if err:
+            result[key] = {
+                'key': key,
+                'mode': 'ayah-text',
+                'name': meta.get('name'),
+                'source': source,
+                'language': meta.get('language', ''),
+                'direction': meta.get('direction', 'ltr'),
+                'fetch_status': 'error',
+                'error': err,
+            }
+            continue
+
+        text_ayah_count = max(ayahs.keys(), default=0)
+        max_ayah = max(max_ayah, text_ayah_count)
+        ayah_audio_map = None
+        audio_subfolder = str(meta.get('audio_subfolder') or '').strip()
+        if audio_subfolder:
+            audio_ayah_count = everyayah_ayah_count_for_surah(surah_id) or text_ayah_count
+            if audio_ayah_count > 0:
+                ayah_audio_map = {
+                    i: everyayah_build_ayah_url(audio_subfolder, surah_id, i)
+                    for i in range(1, audio_ayah_count + 1)
+                }
+                max_ayah = max(max_ayah, audio_ayah_count)
+
         result[key] = {
             'key': key,
             'mode': 'ayah-text',
             'name': meta.get('name'),
-            'source': 'local-db',
-            'language': '',
-            'direction': 'rtl',
-            'has_audio': False,
-            'ayah_audio_map': None,
-            'fetch_status': fetch_status,
-            'ayahs': [{'text': ayahs.get(i, '(النص غير متاح)')} for i in range(1, max_ayah + 1)],
+            'source': source,
+            'language': meta.get('language', ''),
+            'direction': meta.get('direction', 'ltr'),
+            'has_audio': bool(ayah_audio_map),
+            'ayah_audio_map': ayah_audio_map,
+            'fetch_status': 'fetched',
+            'ayahs': [{'text': ayahs.get(i, '(النص غير متاح)')} for i in range(1, text_ayah_count + 1)],
             'error': None,
         }
 
@@ -1153,8 +1223,12 @@ def get_surah(surah_id):
         c = conn.cursor()
         c.execute('SELECT DISTINCT qiraa FROM ayahs WHERE surah = ?', (surah_id,))
         existing_keys = {row['qiraa'] for row in c.fetchall()}
+        all_keys = {q['key'] for q in QIRAAT}
+        missing_keys = sorted(all_keys - existing_keys)
 
         fetch_status = {key: {'fetch_status': 'cached', 'error': None} for key in existing_keys}
+        if missing_keys:
+            fetch_status.update(fetch_external_and_store(surah_id, conn, missing_keys))
 
         c.execute('SELECT ayah, qiraa, text FROM ayahs WHERE surah = ? ORDER BY ayah', (surah_id,))
         rows = c.fetchall()
@@ -1370,4 +1444,4 @@ def qf_ayah_url():
 
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True, port=5000)
+    app.run(debug=False, port=7860)
