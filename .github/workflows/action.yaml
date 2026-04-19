@@ -36,7 +36,6 @@ jobs:
           python - <<'PY'
           import app as app_module
 
-          # Minimal smoke check: app imports and test client can be created.
           client = app_module.app.test_client()
           assert client is not None
           PY
@@ -58,14 +57,14 @@ jobs:
 
       - name: Wait for the health check
         run: |
-          for _ in $(seq 1 30); do
+          for _ in $(seq 1 5); do
             if ! docker ps --format '{{.Names}}' | grep -q '^thetenqiraaat-ci$'; then
               echo "Container exited before becoming healthy"
               docker logs thetenqiraaat-ci || true
               exit 1
             fi
 
-            if curl -fsS http://127.0.0.1:7860/up | grep -q '^ok$'; then
+            if docker exec thetenqiraaat-ci python -c "import urllib.request; b=urllib.request.urlopen('http://127.0.0.1:7860/up', timeout=2).read().decode().strip(); raise SystemExit(0 if b=='ok' else 1)"; then
               exit 0
             fi
 
