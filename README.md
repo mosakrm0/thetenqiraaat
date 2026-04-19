@@ -1,3 +1,5 @@
+[![CI](https://github.com/mosakrm0/thetenqiraaat/actions/workflows/action.yaml/badge.svg)](https://github.com/mosakrm0/thetenqiraaat/actions/workflows/action.yaml)
+
 # Thetenqiraaat - القراءات والترجمات القرآنية
 
 A comprehensive web application for comparing Islamic Quranic readings (qiraat) and translations side-by-side, with support for multiple qiraat variants, editions, and audio recitations.
