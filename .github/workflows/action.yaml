@@ -17,6 +17,8 @@ jobs:
   build-and-test:
     name: Build and test
     runs-on: ubuntu-latest
+    env:
+      APP_PORT: 7860
 
     steps:
       - name: Checkout repository
@@ -53,7 +55,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Start the container
-        run: docker run -d --rm --name thetenqiraaat-ci -e PORT=7860 -p 7860:7860 thetenqiraaat-ci:latest
+        run: docker run -d --rm --name thetenqiraaat-ci -e PORT=${APP_PORT} -p ${APP_PORT}:${APP_PORT} thetenqiraaat-ci:latest
 
       - name: Wait for the health check
         run: |
@@ -64,7 +66,7 @@ jobs:
               exit 1
             fi
 
-            if docker exec thetenqiraaat-ci python -c "import urllib.request; b=urllib.request.urlopen('http://127.0.0.1:7860/up', timeout=2).read().decode().strip(); raise SystemExit(0 if b=='ok' else 1)"; then
+            if docker exec thetenqiraaat-ci python -c "import os, urllib.request; p=os.getenv('PORT','7860'); b=urllib.request.urlopen(f'http://127.0.0.1:{p}/up', timeout=2).read().decode().strip(); raise SystemExit(0 if b=='ok' else 1)" 2>/dev/null; then
               exit 0
             fi
 
