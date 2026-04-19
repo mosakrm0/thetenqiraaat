@@ -58,26 +58,27 @@ jobs:
 
       - name: Wait for the health check
         run: |
-          python - <<'PY'
-          import time
-          import urllib.request
+          for _ in $(seq 1 30); do
+            if ! docker ps --format '{{.Names}}' | grep -q '^thetenqiraaat-ci$'; then
+              echo "Container exited before becoming healthy"
+              docker logs thetenqiraaat-ci || true
+              exit 1
+            fi
 
-          url = 'http://127.0.0.1:7860/up'
-          last_error = None
+            if curl -fsS http://127.0.0.1:7860/up | grep -q '^ok$'; then
+              exit 0
+            fi
 
-          for _ in range(30):
-              try:
-                  with urllib.request.urlopen(url, timeout=2) as response:
-                      body = response.read().decode().strip()
-                      assert response.status == 200
-                      assert body == 'ok'
-                      break
-              except Exception as exc:
-                  last_error = exc
-                  time.sleep(2)
-          else:
-              raise SystemExit(f'health check did not pass: {last_error}')
-          PY
+            sleep 2
+          done
+
+          echo "Health check did not pass within timeout"
+          docker logs thetenqiraaat-ci || true
+          exit 1
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker logs thetenqiraaat-ci || true
 
       - name: Stop the container
         if: always()
