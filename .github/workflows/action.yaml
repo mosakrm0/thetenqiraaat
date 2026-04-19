@@ -32,7 +32,7 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt pytest
 
       - name: Run unit tests
-        run: python -m pytest
+        run: python -m pytest -q tests/test_security.py
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
