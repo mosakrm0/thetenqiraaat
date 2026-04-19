@@ -3,14 +3,24 @@ import os
 import sqlite3
 import threading
 import time
+import concurrent.futures
 from pathlib import Path
 from urllib.parse import urlparse
 import requests
 from flask import Flask, Response, jsonify, render_template, request
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import diskcache
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 app = Flask(__name__)
+# ── limiter ──────────────────────────────────────────────────────────────────
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    storage_uri="memory://",
+)
 
 # ── paths ──────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -141,26 +151,21 @@ def get_http_session() -> requests.Session:
 # ── QF auth (private API, optional) ───────────────────────────────────────────
 _qf_token_lock = threading.Lock()
 _qf_token = {'value': None, 'exp': 0.0}
-_qf_recitations_cache: dict = {'exp': 0.0, 'items': []}
-_qf_choice_cache: dict = {}
-_qf_chapter_audio_cache: dict = {}
 
-# QF public audio cache  {(qf_public_id, surah): {'exp': float, 'ayah_map': dict}}
-_qf_public_audio_cache: dict = {}
-_kfgqpc_json_cache: dict = {}
-_everyayah_recitations_cache: dict = {'exp': 0.0, 'payload': None}
-_alquran_translations_cache: dict = {'exp': 0.0, 'items': None}
-_fawaz_editions_cache: dict = {'exp': 0.0, 'items': None}
+_cache = diskcache.Cache(str(BASE_DIR / '.cache'))
 
 
 def get_db_connection():
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=5.0)
     conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA journal_mode=WAL;')
+    conn.execute('PRAGMA synchronous=NORMAL;')
     return conn
 
 
 def init_db():
-    with sqlite3.connect(str(DB_PATH)) as conn:
+    with sqlite3.connect(str(DB_PATH), timeout=5.0) as conn:
+        conn.execute('PRAGMA journal_mode=WAL;')
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS ayahs (
             id    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -257,16 +262,15 @@ def qf_score_recitation_for_qiraa(qiraa_key, recitation):
     return sum(10 for h in hints if h.lower() in hay)
 
 def qf_get_recitations(session):
-    now = time.time()
-    if _qf_recitations_cache['exp'] > now and _qf_recitations_cache['items']:
-        return _qf_recitations_cache['items']
+    cached = _cache.get('qf_recitations')
+    if cached:
+        return cached
     payload = qf_api_get(session, '/resources/recitations', params={'language': 'ar'})
     items = qf_extract_list(payload, 'recitations')
     if not items:
         payload = qf_api_get(session, '/resources/recitations', params={'language': 'en'})
         items = qf_extract_list(payload, 'recitations')
-    _qf_recitations_cache['items'] = items
-    _qf_recitations_cache['exp'] = now + QF_RESCACHE_TTL_SEC
+    _cache.set('qf_recitations', items, expire=QF_RESCACHE_TTL_SEC)
     return items
 
 def qf_parse_ayah_number(verse_key):
@@ -319,11 +323,10 @@ def _fetch_chapter_audio_map_paginated(session, fetch_fn, surah_number):
     return ayah_map
 
 def qf_get_chapter_audio_map(session, recitation_id, surah_number):
-    cache_key = (int(recitation_id), int(surah_number))
-    cached = _qf_chapter_audio_cache.get(cache_key)
-    now = time.time()
-    if cached and cached['exp'] > now:
-        return cached['ayah_map']
+    cache_key = f'qf_chapter_audio_{recitation_id}_{surah_number}'
+    cached = _cache.get(cache_key)
+    if cached:
+        return cached
 
     def fetch_fn(page):
         return qf_api_get(
@@ -333,15 +336,14 @@ def qf_get_chapter_audio_map(session, recitation_id, surah_number):
         )
 
     ayah_map = _fetch_chapter_audio_map_paginated(session, fetch_fn, surah_number)
-    _qf_chapter_audio_cache[cache_key] = {'exp': now + QF_CHAPTER_CACHE_TTL_SEC, 'ayah_map': ayah_map}
+    _cache.set(cache_key, ayah_map, expire=QF_CHAPTER_CACHE_TTL_SEC)
     return ayah_map
 
 def qf_pick_recitation_for_qiraa(session, qiraa_key, surah_number):
-    choice_cache_key = (qiraa_key, int(surah_number))
-    cached = _qf_choice_cache.get(choice_cache_key)
-    now = time.time()
-    if cached and cached.get('exp', 0) > now:
-        return cached.get('choice')
+    choice_cache_key = f'qf_choice_{qiraa_key}_{surah_number}'
+    cached = _cache.get(choice_cache_key)
+    if cached:
+        return cached
 
     scored = sorted(
         [(qf_score_recitation_for_qiraa(qiraa_key, r), r)
@@ -360,7 +362,7 @@ def qf_pick_recitation_for_qiraa(session, qiraa_key, surah_number):
         except Exception:
             continue
 
-    _qf_choice_cache[choice_cache_key] = {'exp': now + 3600, 'choice': chosen}
+    _cache.set(choice_cache_key, chosen, expire=3600)
     return chosen
 
 def qf_get_ayah_audio_url(session, qiraa_key, surah_number, ayah_number):
@@ -383,11 +385,10 @@ def qf_public_get_chapter_audio_map(surah_number: int, qf_public_id: int) -> dic
     Fetch per-ayah audio URLs from the public QF CDN API (no OAuth needed).
     Returns {ayah_number: absolute_url}.
     """
-    cache_key = (int(qf_public_id), int(surah_number))
-    cached = _qf_public_audio_cache.get(cache_key)
-    now = time.time()
-    if cached and cached['exp'] > now:
-        return cached['ayah_map']
+    cache_key = f'qf_public_audio_{qf_public_id}_{surah_number}'
+    cached = _cache.get(cache_key)
+    if cached:
+        return cached
 
     session = get_http_session()
     ayah_map = {}
@@ -419,16 +420,15 @@ def qf_public_get_chapter_audio_map(surah_number: int, qf_public_id: int) -> dic
             break
         page += 1
 
-    _qf_public_audio_cache[cache_key] = {'exp': now + QF_PUBLIC_AUDIO_TTL_SEC, 'ayah_map': ayah_map}
+    _cache.set(cache_key, ayah_map, expire=QF_PUBLIC_AUDIO_TTL_SEC)
     return ayah_map
 
 
 # ── EveryAyah translation tracks (audio, ayah-by-ayah) ───────────────────────
 def everyayah_get_recitations_payload() -> dict:
-    now = time.time()
-    cached = _everyayah_recitations_cache
-    if cached.get('exp', 0) > now and isinstance(cached.get('payload'), dict):
-        return cached['payload']
+    cached = _cache.get('everyayah_recitations')
+    if isinstance(cached, dict):
+        return cached
 
     session = get_http_session()
     resp = session.get(EVERYAYAH_RECITATIONS_URL, timeout=REQUEST_TIMEOUT)
@@ -437,8 +437,7 @@ def everyayah_get_recitations_payload() -> dict:
     if not isinstance(payload, dict):
         raise ValueError('EveryAyah recitations payload is invalid')
 
-    _everyayah_recitations_cache['exp'] = now + EVERYAYAH_CACHE_TTL_SEC
-    _everyayah_recitations_cache['payload'] = payload
+    _cache.set('everyayah_recitations', payload, expire=EVERYAYAH_CACHE_TTL_SEC)
     return payload
 
 def _everyayah_is_translation_track(name: str, subfolder: str) -> bool:
@@ -565,10 +564,9 @@ def everyayah_build_ayah_url(subfolder: str, surah_id: int, ayah_id: int) -> str
 
 
 def alquran_translation_editions() -> list[dict]:
-    now = time.time()
-    cached = _alquran_translations_cache
-    if cached.get('exp', 0) > now and isinstance(cached.get('items'), list):
-        return cached['items']
+    cached = _cache.get('alquran_translations')
+    if isinstance(cached, list):
+        return cached
 
     session = get_http_session()
     resp = session.get(ALQURAN_TRANSLATIONS_URL, timeout=REQUEST_TIMEOUT)
@@ -597,16 +595,14 @@ def alquran_translation_editions() -> list[dict]:
         })
 
     items.sort(key=lambda x: (str(x.get('language') or ''), str(x.get('englishName') or '').lower()))
-    _alquran_translations_cache['exp'] = now + TRANSLATIONS_CACHE_TTL_SEC
-    _alquran_translations_cache['items'] = items
+    _cache.set('alquran_translations', items, expire=TRANSLATIONS_CACHE_TTL_SEC)
     return items
 
 
 def fawaz_translation_editions() -> list[dict]:
-    now = time.time()
-    cached = _fawaz_editions_cache
-    if cached.get('exp', 0) > now and isinstance(cached.get('items'), list):
-        return cached['items']
+    cached = _cache.get('fawaz_editions')
+    if isinstance(cached, list):
+        return cached
 
     session = get_http_session()
     resp = session.get(FAWAZ_EDITIONS_URL, timeout=REQUEST_TIMEOUT)
@@ -639,8 +635,7 @@ def fawaz_translation_editions() -> list[dict]:
         })
 
     items.sort(key=lambda x: (str(x.get('language') or ''), str(x.get('englishName') or '').lower()))
-    _fawaz_editions_cache['exp'] = now + TRANSLATIONS_CACHE_TTL_SEC
-    _fawaz_editions_cache['items'] = items
+    _cache.set('fawaz_editions', items, expire=TRANSLATIONS_CACHE_TTL_SEC)
     return items
 
 
@@ -794,7 +789,8 @@ def is_allowed_audio_url(url):
         parsed = urlparse(url)
     except Exception:
         return False
-    if parsed.scheme not in {'http', 'https'}:
+    # Enforce TLS for all proxied audio sources.
+    if parsed.scheme != 'https':
         return False
     return (parsed.hostname or '').lower() in ALLOWED_AUDIO_HOSTS
 
@@ -828,10 +824,10 @@ def _kfgqpc_get_rows(session, text_id):
     if not url:
         return None, f'Unsupported KFGQPC textId: {text_id}'
 
-    now = time.time()
-    cached = _kfgqpc_json_cache.get(text_id)
-    if cached and cached.get('exp', 0) > now and isinstance(cached.get('rows'), list):
-        return cached['rows'], None
+    cache_key = f'kfgqpc_json_{text_id}'
+    cached = _cache.get(cache_key)
+    if isinstance(cached, list):
+        return cached, None
 
     try:
         resp = session.get(url, timeout=REQUEST_TIMEOUT)
@@ -845,7 +841,7 @@ def _kfgqpc_get_rows(session, text_id):
     if not isinstance(payload, list):
         return None, 'KFGQPC payload is not a list'
 
-    _kfgqpc_json_cache[text_id] = {'exp': now + KFGQPC_CACHE_TTL_SEC, 'rows': payload}
+    _cache.set(cache_key, payload, expire=KFGQPC_CACHE_TTL_SEC)
     return payload, None
 
 def fetch_kfgqpc_ayahs(session, surah_id, text_id):
@@ -894,28 +890,36 @@ def fetch_external_and_store(surah_id, conn, qiraa_keys):
     c = conn.cursor()
     status_map = {}
     key_set = set(qiraa_keys)
+    tasks = []
 
-    for q in QIRAAT:
-        if q['key'] not in key_set:
-            continue
+    with concurrent.futures.ThreadPoolExecutor(max_workers=7) as executor:
+        for q in QIRAAT:
+            if q['key'] not in key_set:
+                continue
+            tasks.append((q, executor.submit(fetch_qiraa_ayahs, surah_id, q)))
 
-        ayah_map, err = fetch_qiraa_ayahs(surah_id, q)
-        if err:
-            status_map[q['key']] = {'fetch_status': 'error', 'error': err}
-            logger.warning('Fetch failed for %s (surah %s): %s', q['key'], surah_id, err)
-            continue
+        for q, future in tasks:
+            try:
+                ayah_map, err = future.result()
+                if err:
+                    status_map[q['key']] = {'fetch_status': 'error', 'error': err}
+                    logger.warning('Fetch failed for %s (surah %s): %s', q['key'], surah_id, err)
+                    continue
 
-        before = conn.total_changes
-        c.executemany(
-            'INSERT OR IGNORE INTO ayahs (surah, ayah, qiraa, text) VALUES (?, ?, ?, ?)',
-            [(surah_id, ayah_num, q['key'], text) for ayah_num, text in sorted(ayah_map.items())],
-        )
-        conn.commit()  # commit per-qiraa so partial progress is saved on crash
-        inserted = conn.total_changes - before
-        status_map[q['key']] = {
-            'fetch_status': 'fetched' if inserted > 0 else 'cached',
-            'error': None,
-        }
+                before = conn.total_changes
+                c.executemany(
+                    'INSERT OR IGNORE INTO ayahs (surah, ayah, qiraa, text) VALUES (?, ?, ?, ?)',
+                    [(surah_id, ayah_num, q['key'], text) for ayah_num, text in sorted(ayah_map.items())],
+                )
+                conn.commit()
+                inserted = conn.total_changes - before
+                status_map[q['key']] = {
+                    'fetch_status': 'fetched' if inserted > 0 else 'cached',
+                    'error': None,
+                }
+            except Exception as exc:
+                status_map[q['key']] = {'fetch_status': 'error', 'error': str(exc)}
+                logger.warning('Fetch exception for %s (surah %s): %s', q['key'], surah_id, exc)
 
     return status_map
 
@@ -953,6 +957,7 @@ def translations_catalog():
 
 
 @app.route('/api/translations/surah/<int:surah_id>')
+@limiter.limit("60 per minute")
 def translations_surah(surah_id):
     """
     Unified ayah-by-ayah translations endpoint.
@@ -1214,6 +1219,7 @@ def everyayah_translation_surah_map():
 
 
 @app.route('/api/surah/<int:surah_id>')
+@limiter.limit("60 per minute")
 def get_surah(surah_id):
     if surah_id < 1 or surah_id > 114:
         return jsonify({'error': 'Invalid Surah'}), 400
@@ -1348,6 +1354,7 @@ def surah_audio_map():
 
 
 @app.route('/api/audio-proxy')
+@limiter.limit("60 per minute; 5 per second")
 def audio_proxy():
     url = request.args.get('url', '').strip()
     if not url:
@@ -1357,7 +1364,7 @@ def audio_proxy():
 
     session = get_http_session()
     try:
-        upstream = session.get(url, stream=True, timeout=REQUEST_TIMEOUT)
+        upstream = session.get(url, stream=True, timeout=REQUEST_TIMEOUT, allow_redirects=False)
     except requests.RequestException as exc:
         logger.warning('Audio proxy fetch failed: %s', exc)
         return jsonify({'error': 'Upstream fetch failed'}), 502
@@ -1367,14 +1374,26 @@ def audio_proxy():
         upstream.close()
         return jsonify({'error': f'Upstream HTTP {status}'}), 502
 
+    content_length = upstream.headers.get('Content-Length')
+    if content_length is None:
+        upstream.close()
+        return jsonify({'error': 'Upstream Content-Length is required'}), 413
+    try:
+        content_length_n = int(content_length)
+    except (TypeError, ValueError):
+        upstream.close()
+        return jsonify({'error': 'Invalid upstream Content-Length'}), 502
+    if content_length_n > MAX_AUDIO_PROXY_BYTES:
+        upstream.close()
+        return jsonify({'error': 'Upstream content too large'}), 413
+
     def generate():
-        sent = 0
+        bytes_read = 0
         try:
             for chunk in upstream.iter_content(chunk_size=64 * 1024):
                 if chunk:
-                    sent += len(chunk)
-                    if sent > MAX_AUDIO_PROXY_BYTES:
-                        logger.warning('Audio proxy: size limit hit for %s', url)
+                    bytes_read += len(chunk)
+                    if bytes_read > MAX_AUDIO_PROXY_BYTES:
                         break
                     yield chunk
         finally:
@@ -1382,9 +1401,7 @@ def audio_proxy():
 
     content_type = upstream.headers.get('Content-Type', 'audio/mpeg')
     headers = {'Content-Type': content_type, 'Cache-Control': 'public, max-age=3600'}
-    content_length = upstream.headers.get('Content-Length')
-    if content_length:
-        headers['Content-Length'] = content_length
+    headers['Content-Length'] = str(content_length_n)
 
     return Response(generate(), headers=headers)
 

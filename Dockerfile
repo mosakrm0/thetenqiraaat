@@ -14,6 +14,6 @@ COPY quran.db ./
 COPY templates ./templates
 COPY static ./static
 
-EXPOSE 7860
+EXPOSE 6000
 
-CMD ["python", "-c", "from app import app, init_db; init_db(); app.run(host='0.0.0.0', port=7860)"]
+CMD ["python", "-c", "from app import init_db; init_db(); import os; os.system('gunicorn -w 4 -b 0.0.0.0:6000 app:app')"]

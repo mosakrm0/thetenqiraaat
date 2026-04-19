@@ -6,7 +6,7 @@ A comprehensive web application for comparing Islamic Quranic readings (qiraat) 
 
 ## Features
 
-### 📖 Quranic Readings Comparison
+### Quranic Readings Comparison
 - Compare Islamic Quranic readings across **14 different qiraat variants**:
   - Hafs (حفص)
   - Warsh (ورش)
@@ -24,20 +24,20 @@ A comprehensive web application for comparing Islamic Quranic readings (qiraat) 
   - Ishaq (إسحاق)
 
 - **Two viewing modes:**
-  - 📖 Mushaf View: Sequential reading through all verses
-  - ⚖️ Side-by-side Comparison: Compare qiraat variants directly
+  - Mushaf View: Sequential reading through all verses
+  - Side-by-side Comparison: Compare qiraat variants directly
 
-### 🌐 Translation Comparison
+### Translation Comparison
 - Compare **translations from multiple sources** including:
   - AlQuran Cloud API translations (multiple languages and scholars)
   - EveryAyah translation tracks (Arabic, English, Urdu, Persian, Bosnian, Azerbaijani)
   - Fawaz editions API
 
 - **Similar viewing modes:**
-  - 📖 Mushaf View: Read translations sequentially
-  - ⚖️ Side-by-side Comparison: Compare multiple translations
+  - Mushaf View: Read translations sequentially
+  - Side-by-side Comparison: Compare multiple translations
 
-### 🔊 Audio Support
+### Audio Support
 - **Integrated audio recitations** from multiple sources:
   - Quran Foundation (QF) API - Per-ayah audio
   - EveryAyah - Translation audio tracks
@@ -45,16 +45,16 @@ A comprehensive web application for comparing Islamic Quranic readings (qiraat) 
 
 - **One-click audio playback** for each verse with source selection
 
-### 🎨 User Interface Features
-- 🌓 **Dark/Light theme support** with local storage persistence
-- 📱 **Fully responsive design** (mobile, tablet, desktop)
-- 🇾🇪 **Right-to-Left (RTL) interface** optimized for Arabic
-- ⚡ **Fast local text rendering** - All Quranic text loaded locally
-- 🔍 **Surah search** - Quick navigation with filtering
-- ♾️ **Infinite scroll** with smooth transitions
-- 📊 **Organized UI** with collapsible controls
+### User Interface Features
+- **Dark/Light theme support** with local storage persistence
+- **Fully responsive design** (mobile, tablet, desktop)
+- **Right-to-Left (RTL) interface** optimized for Arabic
+- **Fast local text rendering** - All Quranic text loaded locally
+- **Surah search** - Quick navigation with filtering
+- **Infinite scroll** with smooth transitions
+- **Organized UI** with collapsible controls
 
-### 💾 Performance & Reliability
+### Performance & Reliability
 - SQLite database for local Quranic text caching
 - **Request retries** with exponential backoff for external APIs
 - **Multi-session connection pooling** for HTTP requests

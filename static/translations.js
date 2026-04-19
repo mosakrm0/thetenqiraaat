@@ -25,11 +25,110 @@ function toast(msg) {
   setTimeout(() => t.classList.remove('show'), 1800);
 }
 
-async function jget(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
+const memCache = new Map();
+const CACHE_PREFIX = 'translations-cache-v1:';
+
+function cacheKey(key) { return `${CACHE_PREFIX}${key}`; }
+function readCache(key) {
+  const now = Date.now();
+  const mem = memCache.get(key);
+  if (mem) {
+    if (mem.exp > now) return { value: mem.value, fresh: true };
+    memCache.delete(key);
+  }
+  try {
+    const raw = localStorage.getItem(cacheKey(key));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed.exp > now) {
+      memCache.set(key, parsed);
+      return { value: parsed.value, fresh: true };
+    } else {
+      localStorage.removeItem(cacheKey(key));
+    }
+  } catch {}
+  return null;
 }
+
+function _evictStorage() {
+  let entries = [];
+  const now = Date.now();
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(CACHE_PREFIX)) {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(k));
+        entries.push({ k, exp: parsed.exp });
+      } catch {
+        localStorage.removeItem(k); // corrupted
+      }
+    }
+  }
+  
+  // 1. Purge expired globally
+  const valid = [];
+  for (const e of entries) {
+    if (e.exp <= now) {
+      localStorage.removeItem(e.k);
+    } else {
+      valid.push(e);
+    }
+  }
+  
+  // 2. If still need space, purge oldest 20%
+  if (valid.length > 10) {
+    valid.sort((a, b) => a.exp - b.exp);
+    const toRemove = Math.ceil(valid.length * 0.2);
+    for (let i = 0; i < toRemove; i++) {
+      localStorage.removeItem(valid[i].k);
+    }
+  }
+}
+
+function writeCache(key, value, ttlMs) {
+  const entry = { exp: Date.now() + ttlMs, value };
+  memCache.set(key, entry);
+  try { 
+    localStorage.setItem(cacheKey(key), JSON.stringify(entry)); 
+  } catch { 
+    _evictStorage();
+    try {
+      localStorage.setItem(cacheKey(key), JSON.stringify(entry));
+    } catch {}
+  }
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+async function fetchJsonWithRetry(url, { retries = 2, timeoutMs = 15000, backoffMs = 400 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const ctrl  = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const resp = await fetch(url, { signal: ctrl.signal });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return await resp.json();
+    } catch (err) {
+      lastErr = err;
+      if (attempt < retries) await sleep(backoffMs * (attempt + 1));
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw lastErr;
+}
+async function getCachedJson({ key, url, ttlMs, retries = 2 }) {
+  const cached = readCache(key);
+  if (cached?.fresh) return cached.value;
+  try {
+    const data = await fetchJsonWithRetry(url, { retries });
+    writeCache(key, data, ttlMs);
+    return data;
+  } catch (err) {
+    if (cached?.value) { toast('تم العرض من النسخة المحفوظة بسبب مشكلة اتصال'); return cached.value; }
+    throw err;
+  }
+}
+
 
 function initTheme() {
   applyTheme(localStorage.getItem(THEME_KEY) || 'light');
@@ -178,20 +277,24 @@ async function togglePlay(pid, url) {
 }
 
 function bindPlayers() {
-  document.querySelectorAll('.audio-player[data-pid]').forEach(el => {
-    const pid = el.dataset.pid;
-    const url = el.dataset.url;
-    const btn = document.getElementById(`pbtn-${pid}`);
-    const trk = document.getElementById(`ptrk-${pid}`);
-    if (btn) {
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        togglePlay(pid, url);
-      };
-    }
-    if (trk) trk.onclick = (e) => seek(pid, e, trk);
-  });
+  // Deprecated: O(N) looping bypassed in favor of global Event Delegation below
 }
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.play-btn');
+  if (btn) {
+    e.stopPropagation();
+    const player = btn.closest('.audio-player');
+    if (player) togglePlay(player.dataset.pid, player.dataset.url);
+    return;
+  }
+  
+  const trk = e.target.closest('.prog-track');
+  if (trk) {
+    const player = trk.closest('.audio-player');
+    if (player) seek(player.dataset.pid, e, trk);
+  }
+});
 
 function filterArr(q) {
   if (!q) return allSurahs;
@@ -208,9 +311,11 @@ function filterSurahs(q) {
 }
 
 async function loadSurahs() {
-  const d = await jget(`${API_BASE}/surah`);
-  allSurahs = d.data || [];
-  renderList(allSurahs);
+  try {
+    const d = await getCachedJson({ key: 'surah-list', url: `${API_BASE}/surah`, ttlMs: 1000 * 60 * 60 * 12 });
+    allSurahs = d.data || [];
+    renderList(allSurahs);
+  } catch { toast('تعذّر تحميل السور'); }
 }
 
 function selectedByLanguage(lang) {
@@ -297,7 +402,7 @@ function buildChips() {
 }
 
 async function loadCatalog() {
-  const d = await jget('/api/translations/catalog');
+  const d = await getCachedJson({ key: 'translations-catalog', url: '/api/translations/catalog', ttlMs: 1000 * 60 * 60 * 12 });
   catalog = (d.items || []).filter(x => x.mode === 'ayah-text' && x.has_audio);
 
   const en = catalog.find(x => (x.language || '') === 'en');
@@ -437,7 +542,11 @@ async function loadContent() {
   }
   const keys = Array.from(selected);
   try {
-    const payload = await jget(`/api/translations/surah/${curSurah.number}?keys=${encodeURIComponent(keys.join(','))}`);
+    const payload = await getCachedJson({
+      key: `translations:${curSurah.number}:${keys.sort().join(',')}`,
+      url: `/api/translations/surah/${curSurah.number}?keys=${encodeURIComponent(keys.join(','))}`,
+      ttlMs: 1000 * 60 * 60 * 6
+    });
     renderPayload(payload);
   } catch (err) {
     document.getElementById('content').innerHTML = `<div class="empty-state"><div class="empty-title">تعذر تحميل الترجمات</div><div class="empty-sub">${esc(err.message || err)}</div></div>`;

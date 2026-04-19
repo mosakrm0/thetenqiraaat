@@ -103,26 +103,89 @@ const QIRAAT_UI = {
              rewayaId: 16 },
 };
 
+function escHtml(v) {
+  return String(v ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function escAttr(v) {
+  return escHtml(v);
+}
+
 // ── cache helpers ──────────────────────────────────────────────────────────────
 function cacheKey(key) { return `${CACHE_PREFIX}${key}`; }
 
 function readCache(key) {
   const now = Date.now();
   const mem = memCache.get(key);
-  if (mem) return { value: mem.value, fresh: mem.exp > now };
+  if (mem) {
+    if (mem.exp > now) return { value: mem.value, fresh: true };
+    memCache.delete(key);
+  }
   try {
     const raw = localStorage.getItem(cacheKey(key));
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    memCache.set(key, parsed);
-    return { value: parsed.value, fresh: parsed.exp > now };
-  } catch { return null; }
+    if (parsed.exp > now) {
+      memCache.set(key, parsed);
+      return { value: parsed.value, fresh: true };
+    } else {
+      localStorage.removeItem(cacheKey(key));
+    }
+  } catch {}
+  return null;
+}
+
+function _evictStorage() {
+  let entries = [];
+  const now = Date.now();
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(CACHE_PREFIX)) {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(k));
+        entries.push({ k, exp: parsed.exp });
+      } catch {
+        localStorage.removeItem(k); // corrupted
+      }
+    }
+  }
+  
+  // 1. Purge expired globally
+  const valid = [];
+  for (const e of entries) {
+    if (e.exp <= now) {
+      localStorage.removeItem(e.k);
+    } else {
+      valid.push(e);
+    }
+  }
+  
+  // 2. If still need space, purge oldest 20%
+  if (valid.length > 10) {
+    valid.sort((a, b) => a.exp - b.exp);
+    const toRemove = Math.ceil(valid.length * 0.2);
+    for (let i = 0; i < toRemove; i++) {
+      localStorage.removeItem(valid[i].k);
+    }
+  }
 }
 
 function writeCache(key, value, ttlMs) {
   const entry = { exp: Date.now() + ttlMs, value };
   memCache.set(key, entry);
-  try { localStorage.setItem(cacheKey(key), JSON.stringify(entry)); } catch { /* quota */ }
+  try { 
+    localStorage.setItem(cacheKey(key), JSON.stringify(entry)); 
+  } catch { 
+    _evictStorage();
+    try {
+      localStorage.setItem(cacheKey(key), JSON.stringify(entry));
+    } catch {}
+  }
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -209,7 +272,7 @@ function buildChips() {
     const c = document.createElement('div');
     c.className = `q-chip${selected.has(q.key) ? ' on' : ''}`;
     c.dataset.key = q.key;
-    c.innerHTML = `<span class="dot" style="background:${q.color || '#888'}"></span>${q.name || q.key}`;
+    c.innerHTML = `<span class="dot" style="background:${escAttr(q.color || '#888')}"></span>${escHtml(q.name || q.key)}`;
     c.onclick = () => {
       selected[selected.has(q.key) ? 'delete' : 'add'](q.key);
       c.classList.toggle('on', selected.has(q.key));
@@ -231,7 +294,7 @@ function renderList(list) {
   el.innerHTML = list.length
     ? list.map(s => `<div class="s-item${curSurah?.number===s.number?' active':''}" onclick="pickSurah(${s.number})">
         <div class="s-num">${s.number}</div>
-        <div class="s-name">${s.name}</div>
+        <div class="s-name">${escHtml(s.name)}</div>
         <div class="s-count">${s.numberOfAyahs} آية</div>
       </div>`).join('')
     : '<div style="text-align:center;padding:20px;color:var(--txt2)">لا نتائج</div>';
@@ -429,7 +492,7 @@ function buildDefaultAudioSources(chosen) {
 // ── rendering helpers (shared between mushaf + compare) ───────────────────────
 function textStatusBadge(status, error) {
   if (status === 'error') {
-    const tip = error ? ` title="${error.replace(/"/g, '&quot;')}"` : '';
+    const tip = error ? ` title="${escAttr(error)}"` : '';
     return `<span class="fallback-badge" style="background:#8a2f2f"${tip}>تعذّر جلب النص</span>`;
   }
   if (status === 'unavailable') return '<span class="fallback-badge" style="background:#646464">النص غير متاح</span>';
@@ -451,9 +514,9 @@ function buildAudioMarkup(audio, pid, qKey, ayahNum) {
 
 function buildQiraatLabel(q, audio, isFallback, stateBadge) {
   return `<div class="qc-label">
-    <span class="qc-dot" style="background:${q.color || '#888'}"></span>
-    <span class="qc-name">${q.name || q.key}</span>
-    <span class="qc-reciter">${audio?.reciter || ''}</span>
+    <span class="qc-dot" style="background:${escAttr(q.color || '#888')}"></span>
+    <span class="qc-name">${escHtml(q.name || q.key)}</span>
+    <span class="qc-reciter">${escHtml(audio?.reciter || '')}</span>
     ${isFallback ? '<span class="fallback-badge">نص حفص</span>' : ''}
     ${stateBadge}
   </div>`;
@@ -540,7 +603,7 @@ function renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags,
     surahModeQiraat.forEach(q => {
       const audio = audioSources[q.key];
       h += `<div class="sura-audio-item">
-        <span class="sa-label" style="color:${q.color}">${q.name} (${audio.reciter}):</span>
+        <span class="sa-label" style="color:${escAttr(q.color)}">${escHtml(q.name)} (${escHtml(audio.reciter)}):</span>
         ${playerHTML(`sura_${q.key}_${curSurah.number}`, audio.url)}
       </div>`;
     });
@@ -566,7 +629,7 @@ function renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags,
 
       h += `<div class="q-card${isFallback ? ' is-fallback' : ''}">
         ${buildQiraatLabel(q, audio, isFallback, textStatusBadge(textState.status, textState.error))}
-        <div class="qc-text" style="font-family:${qFont}">${txt}</div>
+        <div class="qc-text" style="font-family:${qFont}">${escHtml(txt)}</div>
         ${buildAudioMarkup(audio, pid, q.key, i)}
       </div>`;
     });
@@ -593,10 +656,10 @@ function renderCompare(chosen, textData, start, end, audioSources, fallbackFlags
     h += `<div class="cmp-col${isFallback ? ' is-fallback' : ''}">
       <div class="cmp-head">
         <div class="cmp-head-name">
-          <span class="qc-dot" style="background:${q.color}"></span>
-          ${q.name}${isFallback ? ' <span class="fallback-badge">نص حفص</span>' : ''}${stateBadge ? ` ${stateBadge}` : ''}
+          <span class="qc-dot" style="background:${escAttr(q.color)}"></span>
+          ${escHtml(q.name)}${isFallback ? ' <span class="fallback-badge">نص حفص</span>' : ''}${stateBadge ? ` ${stateBadge}` : ''}
         </div>
-        <div class="cmp-head-sub">${audio.reciter}</div>
+        <div class="cmp-head-sub">${escHtml(audio.reciter)}</div>
         ${headAudio ? `<div style="margin-top:8px">${headAudio}</div>` : ''}
       </div>
       <div class="cmp-body">`;
@@ -609,7 +672,7 @@ function renderCompare(chosen, textData, start, end, audioSources, fallbackFlags
       h += `<div class="cmp-ayah">
         <div class="cmp-num">${i}</div>
         <div style="flex:1">
-          <div class="cmp-text" style="font-family:${qFont}">${txt}</div>
+          <div class="cmp-text" style="font-family:${qFont}">${escHtml(txt)}</div>
           ${buildAudioMarkup(audio, pid, q.key, i)}
         </div>
       </div>`;
@@ -625,7 +688,7 @@ function renderCompare(chosen, textData, start, end, audioSources, fallbackFlags
 // ── player HTML ────────────────────────────────────────────────────────────────
 function playerHTML(pid, url) {
   if (!url) return '<div class="audio-player disabled">لا يتوفر صوت مطابق لهذه القراءة عبر المصدر الحالي</div>';
-  return `<div class="audio-player" data-pid="${pid}" data-url="${url}">
+  return `<div class="audio-player" data-pid="${escAttr(pid)}" data-url="${escAttr(url)}">
     <button class="play-btn" id="pbtn-${pid}">▶</button>
     <div class="prog-track" id="ptrk-${pid}">
       <div class="prog-rail"><div class="prog-bar" id="pbar-${pid}"></div></div>
@@ -665,37 +728,44 @@ function disablePlayer(pid, msg = 'لا يتوفر صوت مطابق لهذه ا
 
 // ── player binding + playback ──────────────────────────────────────────────────
 function bindPlayers() {
-  document.querySelectorAll('.audio-player[data-pid]').forEach(el => {
-    const pid     = el.dataset.pid;
-    const rawUrl  = el.dataset.url;
-    // dataset بيحوّل null/undefined لـ string — نتأكد إن الـ URL حقيقي
-    const url     = (rawUrl && rawUrl !== 'null' && rawUrl !== 'undefined') ? rawUrl : null;
-    const isAsync = el.dataset.urlFn === 'true';
-    const qKey    = el.dataset.qkey;
-    const ayah    = Number(el.dataset.ayah);
-    const btn     = document.getElementById(`pbtn-${pid}`);
-    const trk     = document.getElementById(`ptrk-${pid}`);
-
-    if (btn) {
-      btn.onclick = e => {
-        e.stopPropagation();
-        if (isAsync) {
-          const source = resolvedAudioSources[qKey];
-          if ((source?.mode === 'ayah-async' || source?.mode === 'timed-surah') && typeof source.urlForAyah === 'function') {
-            togglePlay(pid, null, () => source.mode === 'timed-surah'
-              ? resolveTimedAyahPlayback(source, ayah)
-              : source.urlForAyah(ayah));
-          } else {
-            toast('مصدر الصوت غير متاح');
-          }
-        } else {
-          togglePlay(pid, url);
-        }
-      };
-    }
-    if (trk) trk.onclick = (e) => seek(pid, e, trk);
-  });
+  // Deprecated: O(N) looping bypassed in favor of global Event Delegation below
 }
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.play-btn');
+  if (btn) {
+    e.stopPropagation();
+    const player = btn.closest('.audio-player');
+    if (!player) return;
+    
+    const pid     = player.dataset.pid;
+    const rawUrl  = player.dataset.url;
+    const url     = (rawUrl && rawUrl !== 'null' && rawUrl !== 'undefined') ? rawUrl : null;
+    const isAsync = player.dataset.urlFn === 'true';
+    const qKey    = player.dataset.qkey;
+    const ayah    = Number(player.dataset.ayah);
+
+    if (isAsync) {
+      const source = resolvedAudioSources[qKey];
+      if ((source?.mode === 'ayah-async' || source?.mode === 'timed-surah') && typeof source.urlForAyah === 'function') {
+        togglePlay(pid, null, () => source.mode === 'timed-surah'
+          ? resolveTimedAyahPlayback(source, ayah)
+          : source.urlForAyah(ayah));
+      } else {
+        toast('مصدر الصوت غير متاح');
+      }
+    } else {
+      togglePlay(pid, url);
+    }
+    return;
+  }
+  
+  const trk = e.target.closest('.prog-track');
+  if (trk) {
+    const player = trk.closest('.audio-player');
+    if (player) seek(player.dataset.pid, e, trk);
+  }
+});
 
 async function resolveTimedAyahPlayback(source, ayahNumber) {
   const segUrl = await source.urlForAyah(ayahNumber);
@@ -825,7 +895,10 @@ function seek(pid, e, el) {
   const a = audios[pid];
   if (!a?.duration) return;
   const r = el.getBoundingClientRect();
-  a.currentTime = ((e.clientX - r.left) / r.width) * a.duration;
+  if (!Number.isFinite(r.width) || r.width <= 0) return;
+  const x = Math.max(0, Math.min(r.width, e.clientX - r.left));
+  const ratio = x / r.width;
+  a.currentTime = ratio * a.duration;
 }
 
 function stopAll() {
