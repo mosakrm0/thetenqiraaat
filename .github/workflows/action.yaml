@@ -1,86 +1,37 @@
 name: CI
 
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
+on: [push, pull_request]
 
 jobs:
   build-and-test:
-    name: Build and test
     runs-on: ubuntu-latest
-    env:
-      APP_PORT: 7860
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-          cache: pip
 
       - name: Install dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+        run: python -m pip install -r requirements.txt
 
-      - name: Run unit tests
+      - name: App smoke test
+        run: python -c "import app; assert app.app.test_client() is not None"
+
+      - name: Build image
+        run: docker build -t thetenqiraaat-ci:latest .
+
+      - name: Run container
+        run: docker run -d --rm --name thetenqiraaat-ci -e PORT=7860 -p 7860:7860 thetenqiraaat-ci:latest
+
+      - name: Health check
         run: |
-          python - <<'PY'
-          import app as app_module
+          if ! timeout 60 bash -c 'until curl -fsS http://127.0.0.1:7860/up | grep -q "^ok$"; do sleep 2; done'; then
+            docker logs thetenqiraaat-ci || true
+            exit 1
+          fi
 
-          client = app_module.app.test_client()
-          assert client is not None
-          PY
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build the Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          load: true
-          tags: thetenqiraaat-ci:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Start the container
-        run: docker run -d --rm --name thetenqiraaat-ci -e PORT=${APP_PORT} -p ${APP_PORT}:${APP_PORT} thetenqiraaat-ci:latest
-
-      - name: Wait for the health check
-        run: |
-          for _ in $(seq 1 5); do
-            if ! docker ps --format '{{.Names}}' | grep -q '^thetenqiraaat-ci$'; then
-              echo "Container exited before becoming healthy"
-              docker logs thetenqiraaat-ci || true
-              exit 1
-            fi
-
-            if docker exec thetenqiraaat-ci python -c "import os, urllib.request; p=os.getenv('PORT','7860'); b=urllib.request.urlopen(f'http://127.0.0.1:{p}/up', timeout=2).read().decode().strip(); raise SystemExit(0 if b=='ok' else 1)" 2>/dev/null; then
-              exit 0
-            fi
-
-            sleep 2
-          done
-
-          echo "Health check did not pass within timeout"
-          docker logs thetenqiraaat-ci || true
-          exit 1
-
-      - name: Dump container logs on failure
-        if: failure()
-        run: docker logs thetenqiraaat-ci || true
-
-      - name: Stop the container
+      - name: Stop container
         if: always()
-        run: docker stop thetenqiraaat-ci || true
+        run: docker rm -f thetenqiraaat-ci || true
