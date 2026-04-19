@@ -17,8 +17,8 @@ jobs:
 
       - name: Health check
         run: |
-          sleep 15 # Increased from 5
-          curl --fail --retry 10 --retry-connrefused --retry-delay 3 localhost:7860/up
+          sleep 15
+          curl --fail --retry 10 --retry-connrefused --retry-delay 3 http://localhost:7860/
 
       - name: View container logs (on failure)
         if: failure()
