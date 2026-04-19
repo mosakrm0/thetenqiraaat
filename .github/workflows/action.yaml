@@ -32,7 +32,14 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt pytest
 
       - name: Run unit tests
-        run: python -m pytest -q tests/test_security.py
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          TEST_FILES="$(find . -type f -name 'test_*.py' -print)"
+          if [ -z "$TEST_FILES" ]; then
+            echo "No test files found matching test_*.py"
+            exit 1
+          fi
+          python -m pytest -q $TEST_FILES
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
