@@ -13,6 +13,9 @@
   getCachedJson,
   normalizeAudioUrl,
   buildProxyAudioUrl,
+  toggleSidebar,
+  closeSidebarOnMobile,
+  initResponsiveShell,
 } = window.Common;
 
 const SURAH_LIST_TTL = 1000 * 60 * 60 * 24;
@@ -40,6 +43,7 @@ let playbackSpeed        = 1;
 // ── boot ───────────────────────────────────────────────────────────────────────
 (async () => {
   initTheme();
+  initResponsiveShell();
   const params = new URLSearchParams(window.location.search);
   const qParam = params.get('q');
   if (qParam) {
@@ -221,6 +225,7 @@ function filterSurahs(q) {
 async function pickSurah(num, rangeOverride = null) {
   curSurah = allSurahs.find(s => s.number === num);
   if (!curSurah) return;
+  closeSidebarOnMobile();
   stopAll();
   const max = curSurah.numberOfAyahs;
   const startEl = document.getElementById('r-start');
@@ -241,7 +246,7 @@ function switchTab(tab) {
   if (curSurah) loadContent();
 }
 
-function toggleSB() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+function toggleSB(forceCollapse) { toggleSidebar(forceCollapse); }
 
 function syncQiraatBarToggle() {
   const bar = document.getElementById('qiraat-bar');
@@ -689,7 +694,7 @@ function renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags,
 // ── compare view ───────────────────────────────────────────────────────────────
 function renderCompare(chosen, textData, start, end, audioSources, fallbackFlags, fetchMeta = {}, variantsMap = {}, countNotesMap = {}) {
   const cols = Math.min(chosen.length || 1, 3);
-  let h = `${workspaceHeaderMarkup()}<div class="compare-grid" style="grid-template-columns:repeat(${cols},1fr)">`;
+  let h = `${workspaceHeaderMarkup()}<div class="compare-grid" data-cols="${cols}" style="--cmp-cols:${cols}">`;
 
   chosen.forEach(q => {
     const audio      = audioSources[q.key] || { mode: 'none', reciter: q.rawiName };

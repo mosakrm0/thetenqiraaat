@@ -183,6 +183,77 @@ function buildProxyAudioUrl(url) {
   return `/api/audio-proxy?url=${encodeURIComponent(url)}`;
 }
 
+const MOBILE_DRAWER_BP = 900;
+const MOBILE_BAR_BP = 768;
+let _responsiveShellBound = false;
+
+function isMobileDrawer() {
+  return window.innerWidth <= MOBILE_DRAWER_BP;
+}
+
+function syncSidebarUi() {
+  const sb = document.getElementById('sidebar');
+  if (!sb) return;
+  const isOpen = !sb.classList.contains('collapsed');
+  const drawerActive = isOpen && isMobileDrawer();
+  const backdrop = document.getElementById('sb-backdrop');
+  if (backdrop) {
+    backdrop.classList.toggle('open', drawerActive);
+    backdrop.setAttribute('aria-hidden', drawerActive ? 'false' : 'true');
+  }
+  document.body.classList.toggle('sb-drawer-open', drawerActive);
+  const btn = document.getElementById('toggle-sb');
+  if (btn) btn.setAttribute('aria-expanded', String(isOpen));
+}
+
+function toggleSidebar(forceCollapse) {
+  const sb = document.getElementById('sidebar');
+  if (!sb) return;
+  if (forceCollapse === true) sb.classList.add('collapsed');
+  else if (forceCollapse === false) sb.classList.remove('collapsed');
+  else sb.classList.toggle('collapsed');
+  syncSidebarUi();
+}
+
+function closeSidebarOnMobile() {
+  if (isMobileDrawer()) toggleSidebar(true);
+}
+
+function initResponsiveShell() {
+  const sb = document.getElementById('sidebar');
+  if (sb && isMobileDrawer()) {
+    sb.classList.add('collapsed');
+  }
+  const bar = document.getElementById('qiraat-bar');
+  const barBtn = document.getElementById('qbar-toggle');
+  if (bar && window.innerWidth <= MOBILE_BAR_BP) {
+    bar.classList.add('is-collapsed');
+    if (barBtn) {
+      barBtn.textContent = 'إظهار الأدوات';
+      barBtn.setAttribute('aria-expanded', 'false');
+    }
+  }
+  syncSidebarUi();
+
+  if (_responsiveShellBound) return;
+  _responsiveShellBound = true;
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isMobileDrawer()) toggleSidebar(true);
+  });
+
+  let wasMobile = isMobileDrawer();
+  window.addEventListener('resize', () => {
+    const nowMobile = isMobileDrawer();
+    if (!wasMobile && nowMobile) {
+      toggleSidebar(true);
+    } else {
+      syncSidebarUi();
+    }
+    wasMobile = nowMobile;
+  });
+}
+
   window.Common = {
     escHtml,
     escAttr,
@@ -196,6 +267,11 @@ function buildProxyAudioUrl(url) {
     getCachedJson,
     normalizeAudioUrl,
     buildProxyAudioUrl,
+    isMobileDrawer,
+    syncSidebarUi,
+    toggleSidebar,
+    closeSidebarOnMobile,
+    initResponsiveShell,
   };
   window.toggleTheme = toggleTheme;
 })();

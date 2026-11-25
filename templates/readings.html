@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl" data-theme="light">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>مقارنة القراءات العشر القرآنية</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,10 +38,11 @@
       {% endfor %}
     </div>
   </aside>
+  <div id="sb-backdrop" class="sb-backdrop" onclick="toggleSB(true)" aria-hidden="true"></div>
 
   <div id="main">
     <header id="topbar">
-      <button id="toggle-sb" class="v-btn" type="button" onclick="toggleSB()" aria-label="تبديل القائمة">القائمة</button>
+      <button id="toggle-sb" class="v-btn" type="button" onclick="toggleSB()" aria-label="تبديل القائمة" aria-controls="sidebar" aria-expanded="true">القائمة</button>
       <div class="os-brand-mini">القراءات العشر</div>
       <nav class="tabs" aria-label="أوضاع العرض">
         <a class="tab" href="/">الرئيسية</a>

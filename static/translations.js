@@ -12,6 +12,9 @@
     getCachedJson,
     normalizeAudioUrl,
     buildProxyAudioUrl,
+    toggleSidebar,
+    closeSidebarOnMobile,
+    initResponsiveShell,
   } = window.Common;
 
   const cache = createCache('translations-cache-v3:');
@@ -71,9 +74,8 @@
     th: { native: 'ไทย',                ar: 'التايلاندية تايلاندي' },
   };
 
-  function toggleSB() {
-    const sb = document.getElementById('sidebar');
-    if (sb) sb.classList.toggle('collapsed');
+  function toggleSB(forceCollapse) {
+    toggleSidebar(forceCollapse);
   }
 
   function toggleQiraatBar() {
@@ -554,6 +556,7 @@
   async function pickSurah(num, rangeOverride = null) {
     curSurah = allSurahs.find(s => s.number === num);
     if (!curSurah) return;
+    closeSidebarOnMobile();
 
     const max = curSurah.numberOfAyahs;
     const sEl = document.getElementById('r-start');
@@ -618,7 +621,7 @@
   function renderCompareTranslations(data, start, end) {
     const entries = Object.values(data);
     const cols = Math.min(entries.length || 1, 3);
-    let html = `${workspaceHeaderMarkup()}<div class="compare-grid" style="grid-template-columns:repeat(${cols},1fr)">`;
+    let html = `${workspaceHeaderMarkup()}<div class="compare-grid" data-cols="${cols}" style="--cmp-cols:${cols}">`;
 
     entries.forEach(entry => {
       html += `<div class="cmp-col">
@@ -730,6 +733,7 @@
 
   (async function boot() {
     initTheme();
+    initResponsiveShell();
     const params = new URLSearchParams(window.location.search);
     const keysParam = params.get('keys');
     if (keysParam) {

@@ -250,6 +250,24 @@ class TestAppRoutes(unittest.TestCase):
             resp = self.client.get('/api/audio-proxy?url=https://everyayah.com/data/x/001001.mp3')
             self.assertEqual(resp.status_code, 413)
 
+    def test_responsive_markup_and_assets(self):
+        for route in ('/', '/readings', '/translations', '/feedback'):
+            html = self.client.get(route).get_data(as_text=True)
+            self.assertIn('viewport-fit=cover', html, f'{route} missing viewport-fit=cover')
+
+        for route in ('/readings', '/translations'):
+            html = self.client.get(route).get_data(as_text=True)
+            self.assertIn('id="sb-backdrop"', html, f'{route} missing drawer backdrop')
+
+        root = Path(config.BASE_DIR) / 'static'
+        css = (root / 'style.css').read_text(encoding='utf-8')
+        for token in ('--cmp-cols', 'minmax(min(260px, 100%), 1fr)', '.sb-backdrop', 'pointer: coarse', '1024px', '900px', '768px', '480px', '360px'):
+            self.assertIn(token, css, f'style.css missing responsive rule: {token}')
+
+        common_js = (root / 'common.js').read_text(encoding='utf-8')
+        for fn in ('initResponsiveShell', 'toggleSidebar', 'closeSidebarOnMobile'):
+            self.assertIn(fn, common_js, f'common.js missing {fn}')
+
 
 if __name__ == '__main__':
     unittest.main()
