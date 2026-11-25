@@ -123,7 +123,9 @@ class TestAppRoutes(unittest.TestCase):
         self.assertIn('warsh', body['data'])
         self.assertIn('ibn_dhakwan', body['data'])
         self.assertEqual(body['data']['warsh']['text_tier'], 'kfgqpc_full')
-        self.assertEqual(body['data']['ibn_dhakwan']['ayahs'][0]['text'], body['data']['hafs']['ayahs'][0]['text'])
+        self.assertEqual(body['data']['ibn_dhakwan']['ayahs'][0]['text'], 'بسم الله الرحمن الرحيم (لا تعد آية في هذه القراءة)')
+        self.assertTrue(body['data']['ibn_dhakwan']['ayahs'][0]['skip_diff'])
+        self.assertIsNone(body['data']['ibn_dhakwan']['ayahs'][0]['audio_ayah'])
         self.assertIn('1', body['data']['warsh']['count_notes'])
         self.assertIn('4', body['data']['hafs']['variants'])
 
@@ -175,8 +177,11 @@ class TestAppRoutes(unittest.TestCase):
                 [
                     (1, 1, 'hafs', '\ufeffبِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ'),
                     (1, 4, 'hafs', 'مَـٰلِكِ يَوْمِ ٱلدِّينِ'),
+                    (1, 7, 'hafs', 'صِرَٰطَ ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ غَيْرِ ٱلْمَغْضُوبِ عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ'),
                     (1, 1, 'warsh', 'اِ۬لْحَمْدُ لِلهِ رَبِّ اِ۬لْعَٰلَمِينَ'),
                     (1, 3, 'warsh', 'مَلِكِ يَوْمِ الدِّينِ'),
+                    (1, 6, 'warsh', 'صِرَٰطَ ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ'),
+                    (1, 7, 'warsh', 'غَيْرِ ٱلْمَغْضُوبِ عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ'),
                     (112, 1, 'hafs', 'بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ قُلْ هُوَ ٱللَّهُ أَحَدٌ'),
                 ],
             )
@@ -184,9 +189,26 @@ class TestAppRoutes(unittest.TestCase):
         finally:
             conn.close()
 
-        r1 = self.client.get('/api/surah/1?qiraat=hafs,warsh').get_json()['data']
+        r1 = self.client.get('/api/surah/1?qiraat=hafs,warsh,hisham').get_json()['data']
         self.assertFalse(r1['hafs']['ayahs'][0]['text'].startswith('\ufeff'))
+        self.assertFalse(r1['hafs']['ayahs'][0]['skip_diff'])
+        self.assertEqual(r1['hafs']['ayahs'][0]['audio_ayah'], 1)
+
+        self.assertEqual(r1['warsh']['ayahs'][0]['text'], 'بسم الله الرحمن الرحيم (لا تعد آية في هذه القراءة)')
+        self.assertTrue(r1['warsh']['ayahs'][0]['skip_diff'])
+        self.assertIsNone(r1['warsh']['ayahs'][0]['audio_ayah'])
+        self.assertEqual(r1['warsh']['ayahs'][1]['audio_ayah'], 1)
+        self.assertFalse(r1['warsh']['ayahs'][1]['skip_diff'])
         self.assertIn('مَلِكِ', r1['warsh']['ayahs'][3]['text'])
+        self.assertEqual(r1['warsh']['ayahs'][6]['audio_ayah'], 6)
+        self.assertEqual(r1['warsh']['ayahs'][6]['audio_ayah_extra'], 7)
+
+        self.assertEqual(r1['hisham']['ayahs'][0]['text'], 'بسم الله الرحمن الرحيم (لا تعد آية في هذه القراءة)')
+        self.assertTrue(r1['hisham']['ayahs'][0]['skip_diff'])
+        self.assertIsNone(r1['hisham']['ayahs'][0]['audio_ayah'])
+        self.assertEqual(r1['hisham']['ayahs'][1]['audio_ayah'], 1)
+        self.assertEqual(r1['hisham']['ayahs'][6]['audio_ayah'], 6)
+        self.assertEqual(r1['hisham']['ayahs'][6]['audio_ayah_extra'], 7)
 
         r112 = self.client.get('/api/surah/112?qiraat=hafs').get_json()['data']
         self.assertTrue(r112['hafs']['ayahs'][0]['text'].startswith('قُلْ هُوَ'))

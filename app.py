@@ -89,7 +89,7 @@ def _align_fatiha_ayahs(ayahs: dict[int, str]) -> dict[int, str]:
     if not a1_clean or 'الحمد' not in a1_clean:
         return ayahs
     aligned = {
-        1: 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ (لا تُعدّ آية في هذا العد)',
+        1: 'بسم الله الرحمن الرحيم (لا تعد آية في هذه القراءة)',
         2: ayahs.get(1, ''),
         3: ayahs.get(2, ''),
         4: ayahs.get(3, ''),
@@ -227,10 +227,36 @@ def get_surah(surah_id):
             i: _clean_ayah_text(surah_id, i, t, strip_basmala=strip_basmala)
             for i, t in ayahs.items()
         }
+        a1_raw = str(cleaned.get(1) or '')
+        a1_plain = re.sub(r'[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]', '', a1_raw)
+        is_non_kufi_fatiha = (
+            surah_id == 1
+            and (
+                q.get('countingSystem') not in ('kufi', 'makki')
+                or ('الحمد' in a1_plain)
+            )
+        )
         if surah_id == 1 and not q.get('fallback') and key != 'hafs':
             cleaned = _align_fatiha_ayahs(cleaned)
+        if is_non_kufi_fatiha:
+            cleaned[1] = 'بسم الله الرحمن الرحيم (لا تعد آية في هذه القراءة)'
 
-        arr = [{'text': cleaned.get(i, '(النص غير متاح)')} for i in range(1, max_ayah + 1)]
+        arr = []
+        for i in range(1, max_ayah + 1):
+            item = {
+                'text': cleaned.get(i, '(النص غير متاح)'),
+                'skip_diff': False,
+                'audio_ayah': i,
+            }
+            if is_non_kufi_fatiha:
+                if i == 1:
+                    item['skip_diff'] = True
+                    item['audio_ayah'] = None
+                else:
+                    item['audio_ayah'] = i - 1
+                    if i == 7:
+                        item['audio_ayah_extra'] = 7
+            arr.append(item)
 
         q_variants = variants_map.get(key, {})
         q_count_notes = count_notes_map.get(key, {})

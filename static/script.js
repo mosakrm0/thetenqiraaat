@@ -462,18 +462,29 @@ function textTierBadge(q, textState) {
   return '';
 }
 
-function buildAudioMarkup(audio, pid, qKey, ayahNum) {
+function buildAudioMarkup(audio, pid, qKey, audioAyah, extraAyah = null, slotAyah = audioAyah) {
+  if (audioAyah === null) {
+    return '<div class="audio-player disabled">لا يوجد مقطع صوتي مستقل (تبدأ التلاوة من الآية التالية)</div>';
+  }
   if (!audio) return '<div class="audio-player disabled">لا يتوفر صوت</div>';
   if (audio.mode === 'ayah') {
-    const url = typeof audio.urlForAyah === 'function' ? audio.urlForAyah(ayahNum) : null;
-    return playerHTML(pid, url, qKey, ayahNum);
+    const url = typeof audio.urlForAyah === 'function' ? audio.urlForAyah(audioAyah) : null;
+    const extraUrl = extraAyah && typeof audio.urlForAyah === 'function' ? audio.urlForAyah(extraAyah) : null;
+    return playerHTML(pid, url, qKey, slotAyah, extraUrl);
   }
   if (audio.mode === 'timed-surah') {
-    const t = audio.timings?.[String(ayahNum)] || audio.timings?.[ayahNum];
+    const t = audio.timings?.[String(audioAyah)] || audio.timings?.[audioAyah];
     if (!t) {
       return '<div class="audio-player disabled">لا يتوفر توقيت لهذه الآية (استمع للسورة كاملة)</div>';
     }
-    return playerHTMLTimed(pid, qKey, ayahNum, audio.surahUrl, t.start_ms, t.end_ms);
+    let endMs = t.end_ms;
+    if (extraAyah) {
+      const tExtra = audio.timings?.[String(extraAyah)] || audio.timings?.[extraAyah];
+      if (tExtra && Number.isFinite(tExtra.end_ms)) {
+        endMs = tExtra.end_ms;
+      }
+    }
+    return playerHTMLTimed(pid, qKey, slotAyah, audio.surahUrl, t.start_ms, endMs);
   }
   if (audio.mode === 'surah') {
     return '<div class="audio-player disabled">الصوت متاح كاملًا أعلى الصفحة</div>';
@@ -646,7 +657,11 @@ function renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags,
       <div class="cards-row">`;
 
     chosen.forEach(q => {
-      const txt        = textData[q.key]?.[idx]?.text || '(النص غير متاح لهذه القراءة)';
+      const ayahObj    = textData[q.key]?.[idx] || {};
+      const txt        = ayahObj.text || '(النص غير متاح لهذه القراءة)';
+      const skipDiff   = Boolean(ayahObj.skip_diff);
+      const audioAyah  = ayahObj.audio_ayah === undefined ? i : ayahObj.audio_ayah;
+      const extraAyah  = ayahObj.audio_ayah_extra || null;
       const audio      = audioSources[q.key] || { mode: 'none', reciter: q.rawiName };
       const pid        = `m_${q.key}_${curSurah.number}_${i}`;
       const isFallback = Boolean(fallbackFlags[q.key] || q.fallback);
@@ -659,9 +674,9 @@ function renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags,
         ${buildQiraatLabel(q, audio, textState)}
         ${buildReciterSelectMarkup(q, audio)}
         ${buildCountNotesMarkup(cNotes)}
-        <div class="qc-text" style="font-family:${escAttr(qFont)}">${renderAyahTextWithDiff(txt, hafsTxt, q.key)}</div>
+        <div class="qc-text" style="font-family:${escAttr(qFont)}">${skipDiff ? escHtml(txt) : renderAyahTextWithDiff(txt, hafsTxt, q.key)}</div>
         ${buildVariantsMarkup(vList)}
-        ${buildAudioMarkup(audio, pid, q.key, i)}
+        ${buildAudioMarkup(audio, pid, q.key, audioAyah, extraAyah, i)}
       </div>`;
     });
 
@@ -697,20 +712,24 @@ function renderCompare(chosen, textData, start, end, audioSources, fallbackFlags
       <div class="cmp-body">`;
 
     for (let i = start; i <= end; i++) {
-      const idx     = i - 1;
-      const txt     = textData[q.key]?.[idx]?.text || '(النص غير متاح لهذه القراءة)';
-      const hafsTxt = textData.hafs?.[idx]?.text || '';
-      const pid     = `c_${q.key}_${curSurah.number}_${i}`;
-      const vList   = variantsMap[q.key]?.[String(i)] || [];
-      const cNotes  = countNotesMap[q.key]?.[String(i)] || [];
+      const idx       = i - 1;
+      const ayahObj   = textData[q.key]?.[idx] || {};
+      const txt       = ayahObj.text || '(النص غير متاح لهذه القراءة)';
+      const skipDiff  = Boolean(ayahObj.skip_diff);
+      const audioAyah = ayahObj.audio_ayah === undefined ? i : ayahObj.audio_ayah;
+      const extraAyah = ayahObj.audio_ayah_extra || null;
+      const hafsTxt   = textData.hafs?.[idx]?.text || '';
+      const pid       = `c_${q.key}_${curSurah.number}_${i}`;
+      const vList     = variantsMap[q.key]?.[String(i)] || [];
+      const cNotes    = countNotesMap[q.key]?.[String(i)] || [];
 
       h += `<div class="cmp-ayah">
         <div class="cmp-num">${i}</div>
         <div style="flex:1;min-width:0">
           ${buildCountNotesMarkup(cNotes)}
-          <div class="cmp-text" style="font-family:${escAttr(qFont)}">${renderAyahTextWithDiff(txt, hafsTxt, q.key)}</div>
+          <div class="cmp-text" style="font-family:${escAttr(qFont)}">${skipDiff ? escHtml(txt) : renderAyahTextWithDiff(txt, hafsTxt, q.key)}</div>
           ${buildVariantsMarkup(vList)}
-          ${buildAudioMarkup(audio, pid, q.key, i)}
+          ${buildAudioMarkup(audio, pid, q.key, audioAyah, extraAyah, i)}
         </div>
       </div>`;
     }
@@ -722,9 +741,10 @@ function renderCompare(chosen, textData, start, end, audioSources, fallbackFlags
 }
 
 // ── player HTML ────────────────────────────────────────────────────────────────
-function playerHTML(pid, url, qKey = '', ayahNum = 0) {
+function playerHTML(pid, url, qKey = '', ayahNum = 0, extraUrl = null) {
   if (!url) return '<div class="audio-player disabled">لا يتوفر صوت مطابق لهذه القراءة عبر المصدر الحالي</div>';
-  return `<div class="audio-player" data-pid="${escAttr(pid)}" data-url="${escAttr(url)}" data-qkey="${escAttr(qKey)}" data-ayah="${ayahNum}">
+  const extraAttr = extraUrl ? ` data-extra-url="${escAttr(extraUrl)}"` : '';
+  return `<div class="audio-player" data-pid="${escAttr(pid)}" data-url="${escAttr(url)}"${extraAttr} data-qkey="${escAttr(qKey)}" data-ayah="${ayahNum}">
     <button type="button" class="play-btn" id="pbtn-${escAttr(pid)}">تشغيل</button>
     <div class="prog-track" id="ptrk-${escAttr(pid)}">
       <div class="prog-rail"><div class="prog-bar" id="pbar-${escAttr(pid)}"></div></div>
@@ -754,9 +774,10 @@ document.addEventListener('click', (e) => {
     const url = player.dataset.url;
     const startMs = player.dataset.startMs !== undefined ? Number(player.dataset.startMs) : null;
     const endMs   = player.dataset.endMs   !== undefined ? Number(player.dataset.endMs)   : null;
-    const qKey    = player.dataset.qkey || '';
-    const ayah    = Number(player.dataset.ayah || 0);
-    togglePlay(pid, url, { startMs, endMs, qKey, ayah });
+    const qKey     = player.dataset.qkey || '';
+    const ayah     = Number(player.dataset.ayah || 0);
+    const extraUrl = player.dataset.extraUrl || null;
+    togglePlay(pid, url, { startMs, endMs, qKey, ayah, extraUrl });
     return;
   }
 
@@ -770,15 +791,21 @@ document.addEventListener('click', (e) => {
 function _playNextInSequence(qKey, ayah) {
   if (!autoPlayEnabled || !qKey || !ayah) return;
   const prefix = activeTab === 'mushaf' ? 'm' : 'c';
-  const nextPid = `${prefix}_${qKey}_${curSurah.number}_${ayah + 1}`;
-  const nextPlayer = document.querySelector(`.audio-player[data-pid="${nextPid}"]`);
-  if (nextPlayer) {
-    const nextBtn = nextPlayer.querySelector('.play-btn');
-    if (nextBtn) nextBtn.click();
+  const maxAyah = curSurah?.numberOfAyahs || ayah + 1;
+  for (let nextAyah = ayah + 1; nextAyah <= maxAyah; nextAyah++) {
+    const nextPid = `${prefix}_${qKey}_${curSurah.number}_${nextAyah}`;
+    const nextPlayer = document.querySelector(`.audio-player[data-pid="${nextPid}"]`);
+    if (nextPlayer) {
+      const nextBtn = nextPlayer.querySelector('.play-btn');
+      if (nextBtn) {
+        nextBtn.click();
+        return;
+      }
+    }
   }
 }
 
-async function togglePlay(pid, rawUrl, { startMs = null, endMs = null, qKey = '', ayah = 0 } = {}) {
+async function togglePlay(pid, rawUrl, { startMs = null, endMs = null, qKey = '', ayah = 0, extraUrl = null } = {}) {
   Object.entries(audios).forEach(([k, a]) => {
     if (k !== pid && !a.paused) { a.pause(); setState(k, 'idle'); }
   });
@@ -793,6 +820,8 @@ async function togglePlay(pid, rawUrl, { startMs = null, endMs = null, qKey = ''
     a._proxied = false;
     a._windowStartSec = startSec;
     a._windowEndSec = endSec;
+    a._extraUrl = extraUrl ? normalizeAudioUrl(extraUrl) : null;
+    a._playingExtra = false;
     audios[pid] = a;
 
     a.addEventListener('timeupdate', () => {
@@ -807,6 +836,30 @@ async function togglePlay(pid, rawUrl, { startMs = null, endMs = null, qKey = ''
     });
 
     a.addEventListener('ended', () => {
+      if (a._extraUrl && !a._playingExtra) {
+        a._playingExtra = true;
+        a._proxied = false;
+        a._origUrl = a._extraUrl;
+        a.src = a._extraUrl;
+        a.playbackRate = playbackSpeed;
+        a.play().catch(() => {
+          a._playingExtra = false;
+          setState(pid, 'idle');
+          resetBar(pid);
+          _playNextInSequence(qKey, ayah);
+        });
+        return;
+      }
+      if (a._playingExtra) {
+        a._playingExtra = false;
+        a._proxied = false;
+        const mainUrl = normalizeAudioUrl(rawUrl);
+        if (mainUrl) {
+          a._origUrl = mainUrl;
+          a.src = mainUrl;
+          a._srcSet = true;
+        }
+      }
       setState(pid, 'idle');
       resetBar(pid);
       _playNextInSequence(qKey, ayah);
