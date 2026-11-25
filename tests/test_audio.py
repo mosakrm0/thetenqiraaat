@@ -3,16 +3,15 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import diskcache
-
 from config import QIRAAT
 from services import audio as audio_svc
+from services.http_client import SafeDiskCache
 
 
 class TestAudioService(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
-        self.cache = diskcache.Cache(str(Path(self.tmpdir.name) / 'cache'))
+        self.cache = SafeDiskCache(Path(self.tmpdir.name) / 'cache')
         self.cache_patch = patch('services.audio.get_cache', return_value=self.cache)
         self.cache_patch.start()
 
@@ -118,6 +117,19 @@ class TestAudioService(unittest.TestCase):
             mock_sess.return_value.get.side_effect = AssertionError('Should hit negative cache')
             self.assertEqual(audio_svc.qf_public_get_chapter_audio_map(1, 7), {})
             self.assertIsNone(audio_svc.qf_pick_recitation_for_qiraa(mock_sess.return_value, 'hafs', 1))
+
+    def test_safe_disk_cache_preserves_int_and_str_keys_and_ttl(self):
+        sentinel = object()
+        self.cache.set('int_map', {1: 'a', 2: {'nested': [1, 2]}})
+        self.cache.set('str_map', {'45': 'b'})
+        self.cache.set('none_val', None)
+        self.cache.set('expired_val', {'k': 'v'}, expire=-1)
+
+        self.assertEqual(self.cache.get('int_map'), {1: 'a', 2: {'nested': [1, 2]}})
+        self.assertEqual(self.cache.get('str_map'), {'45': 'b'})
+        self.assertIsNone(self.cache.get('none_val', default=sentinel))
+        self.assertIs(self.cache.get('expired_val', default=sentinel), sentinel)
+        self.assertIs(self.cache.get('missing_val', default=sentinel), sentinel)
 
 
 if __name__ == '__main__':

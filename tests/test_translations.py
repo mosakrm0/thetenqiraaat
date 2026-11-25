@@ -3,15 +3,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import diskcache
-
 from services import translations as tr_svc
+from services.http_client import SafeDiskCache
 
 
 class TestTranslationsService(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
-        self.cache = diskcache.Cache(str(Path(self.tmpdir.name) / 'cache'))
+        self.cache = SafeDiskCache(Path(self.tmpdir.name) / 'cache')
         self.c1 = patch('services.translations.get_cache', return_value=self.cache)
         self.c2 = patch('services.audio.get_cache', return_value=self.cache)
         self.c1.start()

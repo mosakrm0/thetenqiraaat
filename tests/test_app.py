@@ -4,18 +4,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import diskcache
-
 import app as app_mod
 import config
 import db as db_mod
+from services.http_client import SafeDiskCache
 
 
 class TestAppRoutes(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.tmp_db = Path(self.tmpdir.name) / 'test.db'
-        self.tmp_cache = diskcache.Cache(str(Path(self.tmpdir.name) / 'cache'))
+        self.tmp_cache = SafeDiskCache(Path(self.tmpdir.name) / 'cache')
 
         self.db_patch = patch.object(db_mod, 'DB_PATH', self.tmp_db)
         self.cfg_db_patch = patch.object(config, 'DB_PATH', self.tmp_db)
