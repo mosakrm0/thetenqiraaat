@@ -119,7 +119,7 @@ def seed_variants_from_file(conn: sqlite3.Connection, file_path: Path | None = N
         return 0
     try:
         rows = json.loads(path.read_text(encoding='utf-8'))
-    except Exception as exc:
+    except (OSError, ValueError) as exc:
         logger.warning('Failed to load variants seed file %s: %s', path, exc)
         return 0
     if not isinstance(rows, list):
@@ -165,7 +165,7 @@ def seed_count_notes_from_file(conn: sqlite3.Connection, file_path: Path | None 
         return 0
     try:
         rows = json.loads(path.read_text(encoding='utf-8'))
-    except Exception as exc:
+    except (OSError, ValueError) as exc:
         logger.warning('Failed to load count notes seed file %s: %s', path, exc)
         return 0
     if not isinstance(rows, list):

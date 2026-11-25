@@ -165,7 +165,14 @@ def fetch_external_and_store(surah_id: int, conn: sqlite3.Connection, qiraa_keys
                     'fetch_status': 'fetched' if inserted > 0 else 'cached',
                     'error': None,
                 }
-            except Exception as exc:
+            except (
+                concurrent.futures.CancelledError,
+                requests.RequestException,
+                sqlite3.Error,
+                RuntimeError,
+                TypeError,
+                ValueError,
+            ) as exc:
                 status_map[q['key']] = {'fetch_status': 'error', 'error': str(exc)}
                 logger.warning('Fetch exception for %s (surah %s): %s', q['key'], surah_id, exc)
 
@@ -281,7 +288,7 @@ def sync_ayah_map_from_github(conn: sqlite3.Connection) -> int:
     payload = resp.json()
     surahs = payload.get('surahs') if isinstance(payload, dict) else None
     if not isinstance(surahs, dict):
-        raise ValueError('Invalid qiraat-ayah-map JSON structure')
+        raise TypeError('Invalid qiraat-ayah-map JSON structure')
 
     tuples = []
     for surah_str, ayahs_obj in surahs.items():
@@ -356,8 +363,8 @@ def _get_surah_name_map() -> dict[str, int]:
                     _SURAH_NAMES_NORM[nm_no_sura] = int(s['number'])
                 if nm:
                     _SURAH_NAMES_NORM[nm] = int(s['number'])
-        except Exception:
-            pass
+        except (KeyError, OSError, TypeError, ValueError) as exc:
+            logger.debug('Failed to load surahs.json for name map: %s', exc)
     return _SURAH_NAMES_NORM
 
 

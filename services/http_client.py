@@ -48,7 +48,7 @@ def is_allowed_audio_url(url: str) -> bool:
     try:
         parsed = urlparse(url)
         port = parsed.port
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         return False
     if parsed.scheme != 'https':
         return False
@@ -72,6 +72,4 @@ def is_allowed_audio_url(url: str) -> bool:
     if host in ALLOWED_AUDIO_HOSTS:
         return True
     # Allow known *.mp3quran.net audio server subdomains (e.g., server6..server16, cdn, download)
-    if _MP3QURAN_SUBDOMAIN_RE.match(host):
-        return True
-    return False
+    return bool(_MP3QURAN_SUBDOMAIN_RE.match(host))

@@ -135,12 +135,12 @@ def _handle_500(err):
 
 # Re-export symbols for backward compatibility (e.g. seed_db.py, Dockerfile, tests)
 __all__ = [
-    'app',
-    'init_db',
-    'QIRAAT',
+    'ALLOWED_AUDIO_HOSTS',
     'DB_PATH',
     'KFGQPC_JSON_URLS',
-    'ALLOWED_AUDIO_HOSTS',
+    'QIRAAT',
+    'app',
+    'init_db',
     'is_allowed_audio_url',
 ]
 
@@ -568,7 +568,7 @@ def translations_surah(surah_id):
 def everyayah_translations_catalog():
     try:
         tracks = everyayah_translation_tracks()
-    except Exception as exc:
+    except (requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
         logger.warning('EveryAyah catalog fetch failed: %s', exc)
         return jsonify({'available': False, 'error': 'Failed to fetch EveryAyah catalog'}), 502
 
@@ -600,7 +600,7 @@ def everyayah_translation_ayah_url():
 
     try:
         track = everyayah_find_track(track_id)
-    except Exception as exc:
+    except (requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
         logger.warning('EveryAyah track lookup failed: %s', exc)
         return jsonify({'available': False, 'error': 'Failed to read EveryAyah catalog'}), 502
 
@@ -638,7 +638,7 @@ def everyayah_translation_surah_map():
 
     try:
         track = everyayah_find_track(track_id)
-    except Exception as exc:
+    except (requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
         logger.warning('EveryAyah surah-map track lookup failed: %s', exc)
         return jsonify({'available': False, 'error': 'Failed to read EveryAyah catalog'}), 502
 
@@ -747,7 +747,7 @@ def ayah_audio():
             url = ayah_map.get(ayah_id)
             if url:
                 return jsonify({'available': True, 'url': url, 'source': 'qf_public'})
-        except Exception as exc:
+        except (requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
             logger.warning('QF public audio error for %s %s:%s: %s', qiraa_key, surah_id, ayah_id, exc)
 
     if qf_is_enabled():
@@ -761,7 +761,7 @@ def ayah_audio():
                     'reciter':   choice['name'] if choice else None,
                     'source':    'qf_private',
                 })
-        except Exception as exc:
+        except (requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
             logger.warning('QF private audio error for %s %s:%s: %s', qiraa_key, surah_id, ayah_id, exc)
 
     return jsonify({'available': False, 'reason': 'not_found'})
@@ -870,7 +870,7 @@ def qf_source():
     session = get_http_session()
     try:
         choice = qf_pick_recitation_for_qiraa(session, qiraa, surah_id)
-    except Exception as exc:
+    except (requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
         logger.warning('QF source check failed: %s', exc)
         return jsonify({'available': False, 'reason': 'upstream_error'})
     if not choice:
@@ -901,7 +901,7 @@ def qf_ayah_url():
     session = get_http_session()
     try:
         url, choice = qf_get_ayah_audio_url(session, qiraa, surah_id, ayah_id)
-    except Exception as exc:
+    except (requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
         logger.warning('QF ayah audio failed: %s', exc)
         return jsonify({'available': False, 'reason': 'upstream_error'})
     if not url:

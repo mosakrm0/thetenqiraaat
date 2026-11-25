@@ -5,6 +5,8 @@ import re
 import threading
 import time
 
+import requests
+
 from config import (
     DATA_DIR,
     EVERYAYAH_CACHE_TTL_SEC,
@@ -26,9 +28,9 @@ from config import (
     QF_SCOPE,
     QF_TOKEN_BUFFER_SEC,
     QIRAAT_BY_KEY,
+    QURAN_COM_V4_API_BASE,
     QURANPEDIA_API_BASE,
     QURANPEDIA_CACHE_TTL_SEC,
-    QURAN_COM_V4_API_BASE,
     REQUEST_TIMEOUT,
 )
 from services.http_client import get_cache, get_http_session
@@ -47,7 +49,7 @@ def get_surah_ayah_count(surah_id: int) -> int:
         try:
             items = json.loads((DATA_DIR / 'surahs.json').read_text(encoding='utf-8'))
             _SURAH_AYAH_COUNTS = {int(s['number']): int(s['numberOfAyahs']) for s in items}
-        except Exception:
+        except (KeyError, OSError, TypeError, ValueError):
             _SURAH_AYAH_COUNTS = {}
     return _SURAH_AYAH_COUNTS.get(int(surah_id), 0)
 
@@ -173,7 +175,7 @@ def qf_parse_ayah_number(verse_key) -> int | None:
         return None
     try:
         return int(verse_key.split(':', 1)[1])
-    except Exception:
+    except (IndexError, TypeError, ValueError):
         return None
 
 
@@ -211,8 +213,8 @@ def _fetch_chapter_audio_map_paginated(fetch_fn) -> dict[int, str]:
         if isinstance(pagination, dict):
             try:
                 total_pages = int(pagination.get('total_pages') or 1)
-            except Exception:
-                pass
+            except (TypeError, ValueError):
+                total_pages = 1
         if page >= total_pages:
             break
         page += 1
@@ -259,7 +261,8 @@ def qf_pick_recitation_for_qiraa(session, qiraa_key: str, surah_number: int):
             if qf_get_chapter_audio_map(session, rid, surah_number):
                 chosen = {'id': rid, 'name': recitation.get('reciter_name') or recitation.get('name') or str(rid)}
                 break
-        except Exception:
+        except (requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
+            logger.debug('QF recitation candidate %s failed for surah %s: %s', rid, surah_number, exc)
             continue
 
     cache.set(choice_cache_key, chosen, expire=3600)
@@ -276,7 +279,7 @@ def qf_get_ayah_audio_url(session, qiraa_key: str, surah_number: int, ayah_numbe
 
 # ── QF public (no-auth) per-ayah audio ────────────────────────────────────────
 def _resolve_audio_url(raw_url: str) -> str:
-    if raw_url.startswith('http://') or raw_url.startswith('https://'):
+    if raw_url.startswith(('http://', 'https://')):
         return raw_url
     return QF_AUDIO_CDN_BASE + raw_url.lstrip('/')
 
@@ -297,7 +300,7 @@ def qf_public_get_chapter_audio_map(surah_number: int, qf_public_id: int) -> dic
             resp = session.get(url, params={'page': page, 'per_page': 50}, timeout=REQUEST_TIMEOUT)
             resp.raise_for_status()
             payload = resp.json()
-        except Exception as exc:
+        except (requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
             logger.warning('QF public audio fetch failed for recitation %s surah %s page %s: %s',
                            qf_public_id, surah_number, page, exc)
             break
@@ -312,7 +315,7 @@ def qf_public_get_chapter_audio_map(surah_number: int, qf_public_id: int) -> dic
         pagination = payload.get('pagination') or {}
         try:
             total_pages = int(pagination.get('total_pages') or 1)
-        except Exception:
+        except (TypeError, ValueError):
             total_pages = 1
         if page >= total_pages:
             break
@@ -334,7 +337,7 @@ def quranpedia_get_recitations_flat() -> list[dict]:
         resp = session.get(f'{QURANPEDIA_API_BASE}/reciters', timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
         payload = resp.json()
-    except Exception as exc:
+    except (requests.RequestException, RuntimeError, ValueError) as exc:
         logger.warning('Quranpedia reciters fetch failed: %s', exc)
         return []
 
@@ -429,7 +432,7 @@ def everyayah_get_recitations_payload() -> dict:
     resp.raise_for_status()
     payload = resp.json()
     if not isinstance(payload, dict):
-        raise ValueError('EveryAyah recitations payload is invalid')
+        raise TypeError('EveryAyah recitations payload is invalid')
 
     cache.set('everyayah_recitations', payload, expire=EVERYAYAH_CACHE_TTL_SEC)
     return payload
@@ -444,8 +447,8 @@ def everyayah_ayah_count_for_surah(surah_id: int) -> int:
         arr = payload.get('ayahCount')
         if isinstance(arr, list) and (1 <= surah_id <= len(arr)):
             return int(arr[surah_id - 1])
-    except Exception:
-        pass
+    except (requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
+        logger.debug('EveryAyah ayah count unavailable for surah %s: %s', surah_id, exc)
     return 0
 
 
@@ -464,7 +467,7 @@ def everyayah_reciters_for_qiraa(qiraa_key: str) -> list[dict]:
 
     try:
         payload = everyayah_get_recitations_payload()
-    except Exception as exc:
+    except (requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
         logger.debug('EveryAyah payload unavailable: %s', exc)
         return []
 
@@ -478,7 +481,7 @@ def everyayah_reciters_for_qiraa(qiraa_key: str) -> list[dict]:
             continue
         low_sub = subfolder.lower()
         low_name = name.lower()
-        if low_sub.startswith('translations/') or low_sub.startswith('english/') or low_sub.startswith('multilanguage/'):
+        if low_sub.startswith(('translations/', 'english/', 'multilanguage/')):
             continue
         if 'translation' in low_name or 'translated' in low_name:
             continue
@@ -530,7 +533,7 @@ def mp3quran_get_riwayat() -> list[dict]:
         if items:
             cache.set('mp3quran_riwayat_ar', items, expire=MP3QURAN_CACHE_TTL_SEC)
         return items
-    except Exception as exc:
+    except (requests.RequestException, RuntimeError, ValueError) as exc:
         logger.warning('MP3Quran riwayat fetch failed: %s', exc)
         return []
 
@@ -549,7 +552,7 @@ def mp3quran_get_timing_read_ids() -> set[int]:
         if ids:
             cache.set('mp3quran_timing_read_ids', ids, expire=MP3QURAN_CACHE_TTL_SEC)
         return set(ids)
-    except Exception:
+    except (requests.RequestException, RuntimeError, ValueError):
         return set()
 
 
@@ -630,7 +633,7 @@ def mp3quran_get_reciters_for_qiraa(qiraa_key: str, surah_id: int) -> list[dict]
             if not isinstance(reciters, list):
                 reciters = []
             cache.set(cache_key, reciters, expire=MP3QURAN_CACHE_TTL_SEC)
-        except Exception as exc:
+        except (requests.RequestException, RuntimeError, ValueError) as exc:
             logger.warning('MP3Quran reciters fetch failed (rewaya %s): %s', rewaya_id, exc)
             return []
 
@@ -699,10 +702,15 @@ def mp3quran_get_ayat_timing(moshaf_id: int, surah_id: int) -> dict[int, dict[st
                 ayah = row.get('ayah')
                 start_t = row.get('start_time')
                 end_t = row.get('end_time')
-                if isinstance(ayah, int) and ayah >= 1 and isinstance(start_t, (int, float)) and isinstance(end_t, (int, float)):
-                    if end_t > start_t:
-                        timings[ayah] = {'start_ms': int(start_t), 'end_ms': int(end_t)}
-    except Exception as exc:
+                if (
+                    isinstance(ayah, int)
+                    and ayah >= 1
+                    and isinstance(start_t, (int, float))
+                    and isinstance(end_t, (int, float))
+                    and end_t > start_t
+                ):
+                    timings[ayah] = {'start_ms': int(start_t), 'end_ms': int(end_t)}
+    except (requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
         logger.debug('MP3Quran ayat_timing failed (read=%s surah=%s): %s', moshaf_id, surah_id, exc)
         cache.set(cache_key, {}, expire=MP3QURAN_TIMING_EMPTY_TTL_SEC)
         return {}
@@ -737,7 +745,7 @@ def qdc_get_chapter_reciters_for_qiraa(qiraa_key: str) -> list[dict]:
             if not isinstance(reciters, list):
                 reciters = []
             cache.set('qdc_chapter_reciters_en', reciters, expire=MP3QURAN_CACHE_TTL_SEC)
-        except Exception as exc:
+        except (requests.RequestException, RuntimeError, ValueError) as exc:
             logger.debug('QDC chapter_reciters unavailable: %s', exc)
             return []
 
@@ -793,7 +801,7 @@ def qdc_get_chapter_audio_with_timings(reciter_id: int, surah_id: int) -> tuple[
                 timings[ayah_num] = {'start_ms': int(t_from), 'end_ms': int(t_to)}
         cache.set(cache_key, {'surah_url': surah_url, 'timings': timings}, expire=QF_PUBLIC_AUDIO_TTL_SEC)
         return surah_url, timings
-    except Exception as exc:
+    except (requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
         logger.debug('QDC chapter audio fetch failed (reciter=%s surah=%s): %s', reciter_id, surah_id, exc)
         return None, {}
 
@@ -1023,7 +1031,7 @@ def resolve_surah_audio(qiraa_key: str, surah_id: int, reciter_id: str | None = 
                     'reciter_name': meta['rawiName'],
                     'ayah_map':     ayah_map,
                 }
-        except Exception as exc:
+        except (requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
             logger.warning('QF public surah-map error %s %s: %s', qiraa_key, surah_id, exc)
 
     # Tier 2: MP3Quran v3 surah + ayat_timing
@@ -1036,7 +1044,7 @@ def resolve_surah_audio(qiraa_key: str, surah_id: int, reciter_id: str | None = 
                 fut = next(f for f, c in futures.items() if c is cand)
                 try:
                     timings = fut.result()
-                except Exception:
+                except (concurrent.futures.CancelledError, requests.RequestException, RuntimeError, TypeError, ValueError):
                     timings = {}
                 if timings:
                     return {

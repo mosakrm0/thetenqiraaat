@@ -1,6 +1,7 @@
 import concurrent.futures
 import logging
 import re
+import sqlite3
 
 import requests
 
@@ -25,7 +26,7 @@ _SAFE_EDITION_RE = re.compile(r'^[a-zA-Z0-9._-]+$')
 def _everyayah_is_translation_track(name: str, subfolder: str) -> bool:
     n = (name or '').lower()
     s = (subfolder or '').lower()
-    if s.startswith('translations/') or s.startswith('english/') or s.startswith('multilanguage/'):
+    if s.startswith(('translations/', 'english/', 'multilanguage/')):
         return True
     return ('translated' in n) or ('translation' in n) or ('word for word' in n)
 
@@ -147,7 +148,7 @@ def alquran_translation_editions() -> list[dict]:
     payload = resp.json()
     data = payload.get('data') if isinstance(payload, dict) else None
     if not isinstance(data, list):
-        raise ValueError('alquran editions payload is invalid')
+        raise TypeError('alquran editions payload is invalid')
 
     items = []
     for row in data:
@@ -183,17 +184,17 @@ def fawaz_translation_editions() -> list[dict]:
     resp.raise_for_status()
     payload = resp.json()
     if not isinstance(payload, dict):
-        raise ValueError('fawaz editions payload is invalid')
+        raise TypeError('fawaz editions payload is invalid')
 
     items = []
-    for _, row in payload.items():
+    for row in payload.values():
         if not isinstance(row, dict):
             continue
         name = row.get('name')
         if not isinstance(name, str) or not name or not _SAFE_EDITION_RE.match(name):
             continue
         # Skip Arabic recitation datasets and duplicate -la / -lad transliteration variants
-        if name.startswith('ara-') or name.endswith('-la') or name.endswith('-lad'):
+        if name.startswith('ara-') or name.endswith(('-la', '-lad')):
             continue
 
         language = normalize_lang_code(row.get('language') or '')
@@ -300,7 +301,7 @@ def _fetch_local_hafs_ayahs(surah_id: int) -> dict[int, str]:
             ).fetchall()
         finally:
             conn.close()
-    except Exception:
+    except (OSError, sqlite3.Error):
         return {}
     out: dict[int, str] = {}
     for r in rows:
@@ -362,15 +363,15 @@ def unified_translations_catalog() -> list[dict]:
 
         try:
             everyayah_by_lang = fut_ea.result()
-        except Exception as exc:
+        except (concurrent.futures.CancelledError, requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
             logger.warning('everyayah translation catalog failed: %s', exc)
         try:
             all_editions.extend(fut_aq.result())
-        except Exception as exc:
+        except (concurrent.futures.CancelledError, requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
             logger.warning('alquran translation catalog failed: %s', exc)
         try:
             all_editions.extend(fut_fw.result())
-        except Exception as exc:
+        except (concurrent.futures.CancelledError, requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
             logger.warning('fawaz translation catalog failed: %s', exc)
 
     _LANG_PRIORITY = {
@@ -462,7 +463,7 @@ def fetch_translations_for_surah(surah_id: int, req_keys: list[str]) -> tuple[di
                     'ayah_count':   ayah_count,
                     'error':        None,
                 }, ayah_count
-            except Exception as exc:
+            except (requests.RequestException, RuntimeError, TypeError, ValueError) as exc:
                 return key, {
                     'key':          key,
                     'mode':         'ayah-audio',

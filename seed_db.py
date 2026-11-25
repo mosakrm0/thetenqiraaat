@@ -17,9 +17,9 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 sys.path.insert(0, str(Path(__file__).parent))
-from config import DB_PATH, KFGQPC_JSON_URLS, QIRAAT  # noqa: E402
-from db import init_db, seed_count_notes_from_file, seed_variants_from_file  # noqa: E402
-from services.qiraat import sync_ayah_map_from_github, sync_qiraat_notes_from_github  # noqa: E402
+from config import DB_PATH, KFGQPC_JSON_URLS, QIRAAT
+from db import init_db, seed_count_notes_from_file, seed_variants_from_file
+from services.qiraat import sync_ayah_map_from_github, sync_qiraat_notes_from_github
 
 REQUEST_TIMEOUT = 15
 REQUEST_RETRIES = 2
@@ -96,7 +96,7 @@ def load_kfgqpc_by_surah(session, text_id, mem_cache: dict) -> dict[int, dict[in
     resp.raise_for_status()
     data = resp.json()
     if not isinstance(data, list):
-        raise ValueError('KFGQPC JSON payload is not a list')
+        raise TypeError('KFGQPC JSON payload is not a list')
 
     by_surah: dict[int, dict[int, str]] = {}
     for row in data:
@@ -149,7 +149,7 @@ def seed(start_surah=1, end_surah=114, pause=0.1, qiraa_filter: set[str] | None 
                     except requests.RequestException as err:
                         logger.warning('Network error for %s surah %s: %s', q['key'], surah, err)
                         continue
-                    except ValueError as err:
+                    except (TypeError, ValueError) as err:
                         logger.warning('Parse error for %s surah %s: %s', q['key'], surah, err)
                         continue
 
