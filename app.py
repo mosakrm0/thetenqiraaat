@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 
 import requests
 from flask import Flask, Response, jsonify, render_template, request
@@ -62,6 +63,43 @@ __all__ = [
     'ALLOWED_AUDIO_HOSTS',
     'is_allowed_audio_url',
 ]
+
+
+def _norm_basmala_word(w: str) -> str:
+    s = re.sub(r'[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]', '', w)
+    return s.replace('ٱ', 'ا').replace('أ', 'ا').replace('إ', 'ا')
+
+
+def _clean_ayah_text(surah_id: int, ayah_num: int, text: str, strip_basmala: bool = False) -> str:
+    s = str(text or '').lstrip('\ufeff').strip()
+    if strip_basmala and ayah_num == 1 and surah_id not in (1, 9):
+        words = s.split()
+        if len(words) > 4 and [_norm_basmala_word(w) for w in words[:4]] == ['بسم', 'الله', 'الرحمن', 'الرحيم']:
+            s = ' '.join(words[4:]).strip()
+    return s
+
+
+def _align_fatiha_ayahs(ayahs: dict[int, str]) -> dict[int, str]:
+    """
+    Align non-Kufi Al-Fatiha (where Ayah 1 starts with الحمد, not Basmala)
+    to the 7-slot Kufi index so verses line up 1-to-1 with Hafs.
+    """
+    a1 = str(ayahs.get(1) or '')
+    a1_clean = re.sub(r'[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]', '', a1)
+    if not a1_clean or 'الحمد' not in a1_clean:
+        return ayahs
+    aligned = {
+        1: 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ (لا تُعدّ آية في هذا العد)',
+        2: ayahs.get(1, ''),
+        3: ayahs.get(2, ''),
+        4: ayahs.get(3, ''),
+        5: ayahs.get(4, ''),
+        6: ayahs.get(5, ''),
+    }
+    p6 = (ayahs.get(6) or '').strip()
+    p7 = (ayahs.get(7) or '').strip()
+    aligned[7] = f'{p6} {p7}'.strip()
+    return aligned
 
 
 # ── pages ──────────────────────────────────────────────────────────────────────
@@ -184,7 +222,15 @@ def get_surah(surah_id):
             if not ayahs and q_status['fetch_status'] == 'cached':
                 q_status = {'fetch_status': 'unavailable', 'error': None}
 
-        arr = [{'text': ayahs.get(i, '(النص غير متاح)')} for i in range(1, max_ayah + 1)]
+        strip_basmala = (key == 'hafs' or bool(q.get('fallback')))
+        cleaned = {
+            i: _clean_ayah_text(surah_id, i, t, strip_basmala=strip_basmala)
+            for i, t in ayahs.items()
+        }
+        if surah_id == 1 and not q.get('fallback') and key != 'hafs':
+            cleaned = _align_fatiha_ayahs(cleaned)
+
+        arr = [{'text': cleaned.get(i, '(النص غير متاح)')} for i in range(1, max_ayah + 1)]
 
         q_variants = variants_map.get(key, {})
         q_count_notes = count_notes_map.get(key, {})

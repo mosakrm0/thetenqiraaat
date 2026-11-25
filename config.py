@@ -24,7 +24,6 @@ MP3QURAN_TIMING_EMPTY_TTL_SEC = 60 * 60 * 6
 QURANPEDIA_API_BASE = 'https://api.quranpedia.net/v1'
 QURANPEDIA_CACHE_TTL_SEC = 60 * 60 * 24
 
-QIRAAT10_API_BASE = os.getenv('QIRAAT10_API_BASE', 'https://qiraat10.com/api/v1').strip().rstrip('/')
 QIRAAT_NOTES_URL = 'https://raw.githubusercontent.com/QZTA/qiraat-api/main/data/qiraat-notes.json'
 QURAN_DATA_PAGES_URL = 'https://raw.githubusercontent.com/QZTA/qiraat-api/main/data/quran-data.json'
 QIRAAT_AYAH_MAP_URL = (

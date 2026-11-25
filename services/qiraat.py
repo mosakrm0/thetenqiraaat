@@ -11,7 +11,6 @@ from config import (
     KFGQPC_CACHE_TTL_SEC,
     KFGQPC_JSON_URLS,
     QIRAAT,
-    QIRAAT10_API_BASE,
     QIRAAT_AYAH_MAP_URL,
     QIRAAT_BY_KEY,
     QIRAAT_NOTES_URL,
@@ -582,27 +581,3 @@ def sync_qiraat_notes_from_github(conn: sqlite3.Connection) -> int:
     )
     conn.commit()
     return conn.total_changes - before
-
-
-def fetch_qiraat10_page_notes(page_number: int) -> list[dict]:
-    """Optional helper to query QZTA/qiraat-api (qiraat10.com) for Mushaf page annotations."""
-    if not QIRAAT10_API_BASE:
-        return []
-    cache = get_cache()
-    cache_key = f'qiraat10_page_{page_number}'
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
-    try:
-        session = get_http_session()
-        resp = session.get(f'{QIRAAT10_API_BASE}/qiraat/page/{int(page_number)}', timeout=REQUEST_TIMEOUT)
-        resp.raise_for_status()
-        data = resp.json()
-        items = data if isinstance(data, list) else data.get('data', [])
-        if not isinstance(items, list):
-            items = []
-        cache.set(cache_key, items, expire=60 * 60 * 24)
-        return items
-    except Exception as exc:
-        logger.debug('qiraat10 API unavailable for page %s: %s', page_number, exc)
-        return []

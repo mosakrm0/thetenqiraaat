@@ -276,34 +276,37 @@ function setPlaybackSpeed(val) {
   });
 }
 
-// ── Arabic word diff highlighting vs Hafs ─────────────────────────────────────
-function _normToken(word) {
-  return String(word || '')
-    .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g, '')
-    .replace(/[\u0640]/g, '')
-    .replace(/[أإآٱ]/g, 'ا')
-    .replace(/[ى]/g, 'ي')
-    .trim();
-}
-
-function renderAyahTextWithDiff(text, hafsText, qKey) {
-  if (!highlightDiffs || !hafsText || qKey === 'hafs') {
-    return escHtml(text);
+  // ── Arabic word diff highlighting vs Hafs ───────────────────────────────────
+  function _normToken(word) {
+    return String(word || '')
+      .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g, '')
+      .replace(/[\u0640\u00A0]/g, '')
+      .replace(/[أإآٱ]/g, 'ا')
+      .replace(/[ى]/g, 'ي')
+      .replace(/[٠-٩0-9]+/g, '')
+      .trim();
   }
-  const tokens = String(text || '').split(/\s+/).filter(Boolean);
-  const hafsTokens = String(hafsText || '').split(/\s+/).filter(Boolean);
-  const hafsNormSet = new Set(hafsTokens.map(_normToken).filter(Boolean));
-  const hafsExactSet = new Set(hafsTokens);
 
-  return tokens.map(tok => {
-    const norm = _normToken(tok);
-    const differs = !hafsExactSet.has(tok) && (!norm || !hafsNormSet.has(norm) || hafsTokens.every(ht => _normToken(ht) === norm ? ht !== tok : true));
-    if (differs && norm.length > 0) {
-      return `<span class="diff-word">${escHtml(tok)}</span>`;
+  function renderAyahTextWithDiff(text, hafsText, qKey) {
+    if (!highlightDiffs || !hafsText || qKey === 'hafs') {
+      return escHtml(text);
     }
-    return escHtml(tok);
-  }).join(' ');
-}
+    const tokens = String(text || '').split(/\s+/).filter(Boolean);
+    const hafsTokens = String(hafsText || '').split(/\s+/).filter(Boolean);
+    const hafsNormSet = new Set(hafsTokens.map(_normToken).filter(Boolean));
+    const hafsExactSet = new Set(hafsTokens);
+
+    return tokens.map(tok => {
+      const norm = _normToken(tok);
+      // Skip pure verse numbers or pause/ornament symbols
+      if (!norm) return escHtml(tok);
+      const differs = !hafsExactSet.has(tok) && (!hafsNormSet.has(norm) || hafsTokens.every(ht => _normToken(ht) === norm ? ht !== tok : true));
+      if (differs) {
+        return `<span class="diff-word">${escHtml(tok)}</span>`;
+      }
+      return escHtml(tok);
+    }).join(' ');
+  }
 
 // ── audio source resolution (backend 4-tier) ──────────────────────────────────
 async function fetchBackendReciters(qKey, surahNumber) {

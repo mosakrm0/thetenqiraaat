@@ -167,6 +167,37 @@ class TestAppRoutes(unittest.TestCase):
         nas_tuples = [t for t in tuples if t[0] == 114 and t[1] == 1]
         self.assertEqual({t[2] for t in nas_tuples}, {'douri'})
 
+    def test_surah_112_strips_bom_and_prepended_basmala_and_fatiha_aligns(self):
+        conn = db_mod.get_db_connection(self.tmp_db)
+        try:
+            conn.executemany(
+                'INSERT OR REPLACE INTO ayahs (surah, ayah, qiraa, text) VALUES (?, ?, ?, ?)',
+                [
+                    (1, 1, 'hafs', '\ufeffبِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ'),
+                    (1, 4, 'hafs', 'مَـٰلِكِ يَوْمِ ٱلدِّينِ'),
+                    (1, 1, 'warsh', 'اِ۬لْحَمْدُ لِلهِ رَبِّ اِ۬لْعَٰلَمِينَ'),
+                    (1, 3, 'warsh', 'مَلِكِ يَوْمِ الدِّينِ'),
+                    (112, 1, 'hafs', 'بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ قُلْ هُوَ ٱللَّهُ أَحَدٌ'),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        r1 = self.client.get('/api/surah/1?qiraat=hafs,warsh').get_json()['data']
+        self.assertFalse(r1['hafs']['ayahs'][0]['text'].startswith('\ufeff'))
+        self.assertIn('مَلِكِ', r1['warsh']['ayahs'][3]['text'])
+
+        r112 = self.client.get('/api/surah/112?qiraat=hafs').get_json()['data']
+        self.assertTrue(r112['hafs']['ayahs'][0]['text'].startswith('قُلْ هُوَ'))
+
+    def test_curated_seed_json_has_valid_qiraat_keys(self):
+        import json
+        seed_path = Path(config.BASE_DIR) / 'data' / 'qiraat_variants_seed.json'
+        rows = json.loads(seed_path.read_text(encoding='utf-8'))
+        for row in rows:
+            self.assertIn(row['qiraa'], config.QIRAAT_BY_KEY)
+
     def test_get_surah_invalid_id(self):
         self.assertEqual(self.client.get('/api/surah/0').status_code, 400)
         self.assertEqual(self.client.get('/api/surah/115').status_code, 400)
