@@ -130,12 +130,42 @@ class TestAppRoutes(unittest.TestCase):
     def test_parse_qiraat_notes_pages_handles_arabic_digits_and_riwayat(self):
         from services.qiraat import parse_qiraat_notes_pages
         notes = {'pages': [{'page': 1, 'farsh': ['٤ - (مَالِكِ): قرأ عاصم والكسائي بألف وقرأ ابن عامر وحمزة بحذفها.'], 'usul': []}]}
-        pages = {'pages': [{'page': 1, 'verses': [{'chapter': 1, 'number': 4}]}]}
+        pages = {'pages': [{'page': 1, 'verses': [{'chapter': 1, 'number': 4, 'text': 'مَـٰلِكِ يَوْمِ ٱلدِّينِ'}]}]}
         tuples = parse_qiraat_notes_pages(notes, pages)
         riwayat_matched = {t[2] for t in tuples}
         self.assertIn('hafs', riwayat_matched)
         self.assertIn('hisham', riwayat_matched)
         self.assertIn('khalaf_hamzah', riwayat_matched)
+
+    def test_parse_qiraat_notes_pages_604_multi_surah_and_tatweel(self):
+        from services.qiraat import parse_qiraat_notes_pages
+        notes = {'pages': [{
+            'page': 604,
+            'farsh': [
+                'سورة الإخلاص',
+                '٤ـ (كفوا): حفص بضم الفاء وبالواو والباقون ويعقوب بالهمز.',
+            ],
+            'usul': [
+                'سورةالناس',
+                'امال دورى ابى عمرو الف(الناس) الخمسة.',
+            ],
+        }]}
+        pages = {'pages': [{
+            'page': 604,
+            'verses': [
+                {'chapter': 112, 'number': 1, 'text': 'قُلْ هُوَ اللَّهُ أَحَدٌ'},
+                {'chapter': 112, 'number': 4, 'text': 'وَلَمْ يَكُن لَّهُ كُفُوًا أَحَدٌ'},
+                {'chapter': 114, 'number': 1, 'text': 'قُلْ أَعُوذُ بِرَبِّ النَّاسِ'},
+            ],
+        }]}
+        tuples = parse_qiraat_notes_pages(notes, pages)
+        # Ayah 1 of 112 must have ZERO variants
+        self.assertFalse(any(t[0] == 112 and t[1] == 1 for t in tuples))
+        # كفوا must be on (112, 4)
+        self.assertTrue(any(t[0] == 112 and t[1] == 4 and t[2] == 'hafs' for t in tuples))
+        # الناس must be on (114, 1) ONLY for douri
+        nas_tuples = [t for t in tuples if t[0] == 114 and t[1] == 1]
+        self.assertEqual({t[2] for t in nas_tuples}, {'douri'})
 
     def test_get_surah_invalid_id(self):
         self.assertEqual(self.client.get('/api/surah/0').status_code, 400)

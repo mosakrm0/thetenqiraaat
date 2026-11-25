@@ -478,20 +478,24 @@ function buildAudioMarkup(audio, pid, qKey, ayahNum) {
   return '<div class="audio-player disabled">لا يتوفر صوت لهذه القراءة حالياً</div>';
 }
 
-function buildVariantsMarkup(variantsList) {
-  if (!Array.isArray(variantsList) || !variantsList.length) return '';
-  return `<div class="q-variants">
-    <div class="qv-title">أوجه القراءة في هذه الآية:</div>
-    ${variantsList.map(v => `
-      <div class="qv-item">
-        ${v.hafs_word ? `<span class="qv-hafs">${escHtml(v.hafs_word)}</span> - ` : ''}
-        <span class="qv-var">${escHtml(v.variant_text)}</span>
-        <span class="qv-rule">${v.rule_type === 'usul' ? 'أصول' : 'فرش'}</span>
-        ${v.note ? `<div class="qv-note">${escHtml(v.note)}</div>` : ''}
-      </div>
-    `).join('')}
-  </div>`;
-}
+  function buildVariantsMarkup(variantsList) {
+    if (!Array.isArray(variantsList) || !variantsList.length) return '';
+    return `<div class="q-variants">
+      <div class="qv-title">أوجه القراءة في هذه الآية:</div>
+      ${variantsList.map(v => {
+        const hw = (v.hafs_word || '').trim();
+        const vt = (v.variant_text || '').trim();
+        const wordHtml = (hw && vt && hw !== vt)
+          ? `<span class="qv-hafs">${escHtml(hw)}</span> - <span class="qv-var">${escHtml(vt)}</span>`
+          : `<span class="qv-var">${escHtml(vt || hw)}</span>`;
+        return `<div class="qv-item">
+          ${wordHtml}
+          <span class="qv-rule">${v.rule_type === 'usul' ? 'أصول' : 'فرش'}</span>
+          ${v.note ? `<div class="qv-note">${escHtml(v.note)}</div>` : ''}
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
 
 function buildCountNotesMarkup(notesList) {
   if (!Array.isArray(notesList) || !notesList.length) return '';

@@ -1,4 +1,5 @@
 import concurrent.futures
+import json
 import logging
 import re
 import sqlite3
@@ -6,6 +7,7 @@ import sqlite3
 import requests
 
 from config import (
+    DATA_DIR,
     KFGQPC_CACHE_TTL_SEC,
     KFGQPC_JSON_URLS,
     QIRAAT,
@@ -207,6 +209,19 @@ def get_surah_variants(conn: sqlite3.Connection, surah_id: int, qiraa_keys: list
             for ayah_num, items in all_notes.items():
                 q_map.setdefault(ayah_num, []).extend(items)
 
+    # Deduplicate per (qiraa, ayah) by normalized (hafs_word, note prefix)
+    for qk, ayah_dict in out.items():
+        for ayah_num, items in ayah_dict.items():
+            seen_sig: set[tuple[str, str]] = set()
+            deduped = []
+            for it in items:
+                sig = (_norm_ar_search(it.get('hafs_word') or ''), _norm_ar_search(it.get('note') or '')[:40])
+                if sig in seen_sig:
+                    continue
+                seen_sig.add(sig)
+                deduped.append(it)
+            ayah_dict[ayah_num] = deduped
+
     if QF_QIRAAT_ENABLED:
         _enrich_variants_from_qf_if_available(surah_id, out)
 
@@ -324,65 +339,106 @@ def _ar_digits_to_ascii(text: str) -> str:
     return str(text or '').translate(trans)
 
 
+def _norm_ar_search(text: str) -> str:
+    s = _ar_digits_to_ascii(text)
+    s = re.sub(r'[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]', '', s)
+    s = s.replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا').replace('ٱ', 'ا')
+    s = s.replace('ى', 'ي').replace('ة', 'ه')
+    s = re.sub(r'[^\w\s\u0600-\u06FF]', ' ', s)
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s
+
+
+_SURAH_NAMES_NORM: dict[str, int] | None = None
+
+
+def _get_surah_name_map() -> dict[str, int]:
+    global _SURAH_NAMES_NORM
+    if _SURAH_NAMES_NORM is None:
+        _SURAH_NAMES_NORM = {}
+        try:
+            items = json.loads((DATA_DIR / 'surahs.json').read_text(encoding='utf-8'))
+            for s in items:
+                nm = _norm_ar_search(s.get('name') or '')
+                nm_no_sura = re.sub(r'^سوره\s*', '', nm).strip()
+                if nm_no_sura:
+                    _SURAH_NAMES_NORM[nm_no_sura] = int(s['number'])
+                if nm:
+                    _SURAH_NAMES_NORM[nm] = int(s['number'])
+        except Exception:
+            pass
+    return _SURAH_NAMES_NORM
+
+
 def _match_riwayat_in_note(note_text: str) -> list[str]:
     """Identify canonical riwayat keys referenced in an Arabic Qiraat farsh/usul note."""
-    norm = _ar_digits_to_ascii(note_text)
+    norm = _norm_ar_search(note_text)
     matched: set[str] = set()
 
-    # Specific transmitters
+    if any(p in norm for p in ('لجميع القراء', 'لكل القراء', 'عند الجميع', 'اتفق القراء')):
+        return ['_all']
+
     rawi_patterns = [
         ('qaloon',        ['قالون']),
         ('warsh',         ['ورش']),
         ('bazzi',         ['البزي', 'بزي']),
         ('qumbul',        ['قنبل']),
-        ('douri',         ['الدوري عن أبي عمرو', 'الدوري عن ابي عمرو']),
-        ('susi',          ['السوسي']),
+        ('douri',         ['الدوري عن ابي عمرو', 'دوري ابي عمرو', 'الدوري البصري']),
+        ('susi',          ['السوسي', 'سوسي']),
         ('hisham',        ['هشام']),
         ('ibn_dhakwan',   ['ابن ذكوان', 'ذكوان']),
-        ('shouba',        ['شعبة']),
+        ('shouba',        ['شعبه']),
         ('hafs',          ['حفص']),
-        ('khalaf_hamzah', ['خلف عن حمزة']),
+        ('khalaf_hamzah', ['خلف عن حمزه']),
         ('khallad',       ['خلاد']),
-        ('harith',        ['أبو الحارث', 'ابو الحارث', 'الحارث']),
-        ('douri_kisai',   ['الدوري عن الكسائي']),
+        ('harith',        ['ابو الحارث', 'ابي الحارث', 'الحارث']),
+        ('douri_kisai',   ['الدوري عن الكسائي', 'دوري الكسائي']),
         ('wardan',        ['ابن وردان', 'وردان']),
         ('ibn_jammaz',    ['ابن جماز', 'جماز']),
         ('ruways',        ['رويس']),
         ('rawh',          ['روح']),
-        ('ishaq',         ['إسحاق', 'اسحاق']),
-        ('idris',         ['إدريس', 'ادريس']),
+        ('ishaq',         ['اسحاق']),
+        ('idris',         ['ادريس']),
     ]
     for key, pats in rawi_patterns:
         if any(p in norm for p in pats):
             matched.add(key)
 
-    # Generic الدوري (applies to both Abu Amr and Al-Kisa'i if neither specific phrase matched)
-    if 'الدوري' in norm and 'douri' not in matched and 'douri_kisai' not in matched:
+    # Generic الدوري (applies to both Abu Amr and Al-Kisa'i only if neither specific phrase matched)
+    if ('الدوري' in norm or 'دوري' in norm) and 'douri' not in matched and 'douri_kisai' not in matched:
         matched.update(['douri', 'douri_kisai'])
 
-    # Imams & canonical groupings
+    # Remove specific "rawi of imam" phrases before matching whole-Imam patterns
+    group_norm = norm
+    for phrase in (
+        'الدوري عن ابي عمرو', 'دوري ابي عمرو',
+        'الدوري عن الكسائي', 'دوري الكسائي',
+        'خلف عن حمزه', 'خلاد عن حمزه',
+        'ابو الحارث عن الكسائي', 'ابي الحارث عن الكسائي',
+        'اسحاق عن خلف', 'ادريس عن خلف',
+    ):
+        group_norm = group_norm.replace(phrase, ' ')
+
     group_patterns = [
-        (['نافع'],                  ['qaloon', 'warsh']),
-        (['ابن كثير'],              ['bazzi', 'qumbul']),
-        (['أبو عمرو', 'أبوعمرو', 'ابو عمرو'], ['douri', 'susi']),
-        (['ابن عامر', 'الشامي'],    ['hisham', 'ibn_dhakwan']),
-        (['عاصم'],                  ['shouba', 'hafs']),
-        (['حمزة'],                  ['khalaf_hamzah', 'khallad']),
-        (['الكسائي', 'الكسائى'],    ['harith', 'douri_kisai']),
-        (['أبو جعفر', 'أبوجعفر', 'ابو جعفر'], ['wardan', 'ibn_jammaz']),
-        (['يعقوب'],                 ['ruways', 'rawh']),
+        (['نافع'],                       ['qaloon', 'warsh']),
+        (['ابن كثير'],                   ['bazzi', 'qumbul']),
+        (['ابو عمرو', 'ابي عمرو', 'ابوعمرو'], ['douri', 'susi']),
+        (['ابن عامر', 'الشامي'],         ['hisham', 'ibn_dhakwan']),
+        (['عاصم'],                       ['shouba', 'hafs']),
+        (['حمزه'],                       ['khalaf_hamzah', 'khallad']),
+        (['الكسائي'],                    ['harith', 'douri_kisai']),
+        (['ابو جعفر', 'ابي جعفر', 'ابوجعفر'], ['wardan', 'ibn_jammaz']),
+        (['يعقوب'],                      ['ruways', 'rawh']),
         (['خلف العاشر', 'خلف في اختياره'], ['ishaq', 'idris']),
-        (['الكوفيون', 'الكوفيين'], ['shouba', 'hafs', 'khalaf_hamzah', 'khallad', 'harith', 'douri_kisai', 'ishaq', 'idris']),
-        (['المدنيان'],              ['qaloon', 'warsh', 'wardan', 'ibn_jammaz']),
-        (['الحرميان'],              ['qaloon', 'warsh', 'bazzi', 'qumbul']),
-        (['البصريان'],              ['douri', 'susi', 'ruways', 'rawh']),
+        (['الكوفيون', 'الكوفيين'],       ['shouba', 'hafs', 'khalaf_hamzah', 'khallad', 'harith', 'douri_kisai', 'ishaq', 'idris']),
+        (['المدنيان'],                   ['qaloon', 'warsh', 'wardan', 'ibn_jammaz']),
+        (['الحرميان'],                   ['qaloon', 'warsh', 'bazzi', 'qumbul']),
+        (['البصريان'],                   ['douri', 'susi', 'ruways', 'rawh']),
     ]
     for pats, keys in group_patterns:
-        if any(p in norm for p in pats):
+        if any(p in group_norm for p in pats):
             matched.update(keys)
 
-    if not matched:
-        return ['_all']
     return sorted(matched)
 
 
@@ -392,7 +448,7 @@ def parse_qiraat_notes_pages(notes_payload: dict, quran_pages_payload: dict) -> 
     into tuples ready for qiraat_variants:
       (surah, ayah, qiraa, hafs_word, variant_text, note, rule_type, source)
     """
-    page_verses: dict[int, list[tuple[int, int]]] = {}
+    page_verses: dict[int, list[tuple[int, int, str]]] = {}
     for p_obj in quran_pages_payload.get('pages') or []:
         if not isinstance(p_obj, dict) or not p_obj.get('page'):
             continue
@@ -400,11 +456,17 @@ def parse_qiraat_notes_pages(notes_payload: dict, quran_pages_payload: dict) -> 
         v_list = []
         for v in p_obj.get('verses') or []:
             if isinstance(v, dict) and v.get('chapter') and v.get('number'):
-                v_list.append((int(v['chapter']), int(v['number'])))
+                v_list.append((
+                    int(v['chapter']),
+                    int(v['number']),
+                    _norm_ar_search(v.get('text') or ''),
+                ))
         if v_list:
             page_verses[p_num] = v_list
 
+    surah_map = _get_surah_name_map()
     tuples: list[tuple] = []
+
     for p_entry in notes_payload.get('pages') or []:
         if not isinstance(p_entry, dict) or not p_entry.get('page'):
             continue
@@ -413,10 +475,8 @@ def parse_qiraat_notes_pages(notes_payload: dict, quran_pages_payload: dict) -> 
         if not verses_on_page:
             continue
 
-        # Map ayah_num -> list of (surah, ayah) on this page (handles multi-surah pages)
-        ayah_lookup: dict[int, list[tuple[int, int]]] = {}
-        for s_id, a_id in verses_on_page:
-            ayah_lookup.setdefault(a_id, []).append((s_id, a_id))
+        surahs_on_page = sorted({v[0] for v in verses_on_page})
+        current_surah = surahs_on_page[0]
 
         for rule_type, field in (('farsh', 'farsh'), ('usul', 'usul')):
             for raw_note in p_entry.get(field) or []:
@@ -424,30 +484,73 @@ def parse_qiraat_notes_pages(notes_payload: dict, quran_pages_payload: dict) -> 
                 if not note_str:
                     continue
 
-                # Extract leading ayah numbers before '-' (e.g. "٤ - (مَالِكِ): ..." or "١٣، ١١ - ...")
+                norm_line = _norm_ar_search(note_str)
+                # Update current_surah on surah headers ("سورة الإخلاص", "سورةالناس", etc.)
+                if norm_line.startswith('سوره'):
+                    rest = re.sub(r'^سوره\s*', '', norm_line).strip()
+                    for s_id in surahs_on_page:
+                        for nm, mapped_id in surah_map.items():
+                            if mapped_id == s_id and (nm == rest or nm in rest or rest in nm):
+                                current_surah = s_id
+                                break
+                    continue
+
+                # Skip section/noise headers
+                if norm_line in ('من الاصول', 'الاصول', 'فرش الحروف') or (len(norm_line) < 18 and ':' not in note_str and '(' not in note_str):
+                    continue
+
                 ascii_note = _ar_digits_to_ascii(note_str)
-                head_match = re.match(r'^([0-9،,\s]+)\s*[-–:]\s*(.*)$', ascii_note)
                 target_coords: list[tuple[int, int]] = []
-                body = note_str
+
+                # Tier 1: Explicit ayah number(s) at start (handles -, –, ـ, _, :, .)
+                head_match = re.match(r'^([0-9،,\s]+)\s*[-–ـ_:\.]\s*(.*)$', ascii_note)
+                if not head_match:
+                    head_match = re.match(r'^\(\s*[-–ـ]\s*([0-9،,\s]+)', ascii_note)
+
                 if head_match:
                     nums = [int(n) for n in re.findall(r'\d+', head_match.group(1))]
                     for n in nums:
-                        target_coords.extend(ayah_lookup.get(n, []))
-                if not target_coords:
-                    # Page-level usul or unmatched number -> attach to first verse on the page
-                    target_coords = [verses_on_page[0]]
+                        in_cur = [(s, a) for (s, a, _) in verses_on_page if s == current_surah and a == n]
+                        if in_cur:
+                            target_coords.extend(in_cur)
+                        else:
+                            target_coords.extend((s, a) for (s, a, _) in verses_on_page if a == n)
 
-                # Extract word inside first (...) if present
-                word_match = re.search(r'\(([^)]{1,60})\)', note_str)
-                hafs_word = word_match.group(1).strip() if word_match else ''
-                variant_text = hafs_word or ('أصول القراءة' if rule_type == 'usul' else 'فرش الحروف')
+                # Tier 2: Match parenthesized word(s) against actual verses on this page
+                paren_words = [w.strip() for w in re.findall(r'\(([^)]{1,60})\)', note_str) if w.strip()]
+                if not target_coords and paren_words:
+                    for pw in paren_words:
+                        pw_norm = _norm_ar_search(pw)
+                        if len(pw_norm) < 2:
+                            continue
+                        cur_hits = [(s, a) for (s, a, txt) in verses_on_page if s == current_surah and pw_norm in txt]
+                        if cur_hits:
+                            target_coords.extend(cur_hits)
+                        else:
+                            target_coords.extend((s, a) for (s, a, txt) in verses_on_page if pw_norm in txt)
+
+                # Tier 3: Never blindly dump unmatched notes onto Ayah 1
+                if not target_coords:
+                    continue
+
+                # Deduplicate target coordinates preserving order
+                seen_coords: set[tuple[int, int]] = set()
+                unique_coords = []
+                for coord in target_coords:
+                    if coord not in seen_coords:
+                        seen_coords.add(coord)
+                        unique_coords.append(coord)
 
                 riwayat_keys = _match_riwayat_in_note(note_str)
-                # Keep DB compact: if >=10 riwayat match or '_all', store once under '_all'
+                if not riwayat_keys:
+                    continue
                 if len(riwayat_keys) >= 10:
                     riwayat_keys = ['_all']
 
-                for s_id, a_id in target_coords:
+                hafs_word = paren_words[0] if paren_words else ''
+                variant_text = '' if hafs_word else ('أصول القراءة' if rule_type == 'usul' else 'فرش الحروف')
+
+                for s_id, a_id in unique_coords:
                     for rk in riwayat_keys:
                         tuples.append((
                             s_id, a_id, rk, hafs_word, variant_text,
@@ -469,6 +572,7 @@ def sync_qiraat_notes_from_github(conn: sqlite3.Connection) -> int:
     if not tuples:
         return 0
 
+    conn.execute("DELETE FROM qiraat_variants WHERE source = 'shatibiyyah_durrah'")
     before = conn.total_changes
     conn.executemany(
         '''INSERT OR IGNORE INTO qiraat_variants
