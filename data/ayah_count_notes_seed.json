@@ -1,0 +1,130 @@
+[
+  {
+    "surah": 1,
+    "kufi_ayah": 1,
+    "counting_system": "kufi",
+    "boundary_type": "end",
+    "anchor_word": "الرحيم",
+    "note": "البسملة آية مستقلة (رقم 1) في العد الكوفي والمكي"
+  },
+  {
+    "surah": 1,
+    "kufi_ayah": 1,
+    "counting_system": "makki",
+    "boundary_type": "end",
+    "anchor_word": "الرحيم",
+    "note": "البسملة آية مستقلة (رقم 1) في العد المكي"
+  },
+  {
+    "surah": 1,
+    "kufi_ayah": 1,
+    "counting_system": "madani-first",
+    "boundary_type": "not_counted",
+    "anchor_word": "الرحيم",
+    "note": "البسملة ليست آية مرقمة في العد المدني الأول (قالون/أبو جعفر)، وتُعدّ «أنعمت عليهم» رأس آية سادسة"
+  },
+  {
+    "surah": 1,
+    "kufi_ayah": 1,
+    "counting_system": "madani-last",
+    "boundary_type": "not_counted",
+    "anchor_word": "الرحيم",
+    "note": "البسملة ليست آية مرقمة في العد المدني الأخير (ورش)، وتُعدّ «أنعمت عليهم» رأس آية سادسة"
+  },
+  {
+    "surah": 1,
+    "kufi_ayah": 1,
+    "counting_system": "basri",
+    "boundary_type": "not_counted",
+    "anchor_word": "الرحيم",
+    "note": "البسملة ليست آية مرقمة في العد البصري (أبو عمرو/يعقوب)"
+  },
+  {
+    "surah": 1,
+    "kufi_ayah": 1,
+    "counting_system": "dimashqi",
+    "boundary_type": "not_counted",
+    "anchor_word": "الرحيم",
+    "note": "البسملة ليست آية مرقمة في العد الدمشقي (ابن عامر)"
+  },
+  {
+    "surah": 1,
+    "kufi_ayah": 7,
+    "counting_system": "madani-first",
+    "boundary_type": "internal",
+    "anchor_word": "عليهم",
+    "note": "فصل «صراط الذين أنعمت عليهم» كآية (6) في المدني الأول"
+  },
+  {
+    "surah": 1,
+    "kufi_ayah": 7,
+    "counting_system": "madani-last",
+    "boundary_type": "internal",
+    "anchor_word": "عليهم",
+    "note": "فصل «صراط الذين أنعمت عليهم» كآية (6) في المدني الأخير"
+  },
+  {
+    "surah": 1,
+    "kufi_ayah": 7,
+    "counting_system": "basri",
+    "boundary_type": "internal",
+    "anchor_word": "عليهم",
+    "note": "فصل «صراط الذين أنعمت عليهم» كآية (6) في البصري"
+  },
+  {
+    "surah": 1,
+    "kufi_ayah": 7,
+    "counting_system": "dimashqi",
+    "boundary_type": "internal",
+    "anchor_word": "عليهم",
+    "note": "فصل «صراط الذين أنعمت عليهم» كآية (6) في الدمشقي"
+  },
+  {
+    "surah": 2,
+    "kufi_ayah": 1,
+    "counting_system": "kufi",
+    "boundary_type": "end",
+    "anchor_word": "الم",
+    "note": "«الم» تُعدّ آية مستقلة في العد الكوفي فقط"
+  },
+  {
+    "surah": 2,
+    "kufi_ayah": 1,
+    "counting_system": "madani-first",
+    "boundary_type": "not_counted",
+    "anchor_word": "الم",
+    "note": "«الم» لا تُعدّ آية مستقلة في غير الكوفي، بل تتصل بـ«ذلك الكتاب لا ريب فيه»"
+  },
+  {
+    "surah": 2,
+    "kufi_ayah": 1,
+    "counting_system": "madani-last",
+    "boundary_type": "not_counted",
+    "anchor_word": "الم",
+    "note": "«الم» لا تُعدّ آية مستقلة في المدني الأخير (ورش)"
+  },
+  {
+    "surah": 2,
+    "kufi_ayah": 1,
+    "counting_system": "makki",
+    "boundary_type": "not_counted",
+    "anchor_word": "الم",
+    "note": "«الم» لا تُعدّ آية مستقلة في العد المكي (ابن كثير)"
+  },
+  {
+    "surah": 2,
+    "kufi_ayah": 1,
+    "counting_system": "basri",
+    "boundary_type": "not_counted",
+    "anchor_word": "الم",
+    "note": "«الم» لا تُعدّ آية مستقلة في العد البصري (أبو عمرو/يعقوب)"
+  },
+  {
+    "surah": 2,
+    "kufi_ayah": 1,
+    "counting_system": "dimashqi",
+    "boundary_type": "not_counted",
+    "anchor_word": "الم",
+    "note": "«الم» لا تُعدّ آية مستقلة في العد الدمشقي (ابن عامر)"
+  }
+]

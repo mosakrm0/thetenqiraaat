@@ -1,315 +1,225 @@
-// script.js
+// script.js — Readings comparison page
 
-// ── constants ──────────────────────────────────────────────────────────────────
-// Cumulative ayah offsets per surah (index 0 = surah 1).
-// Used to build absolute ayah numbers for cdn.islamic.network URLs.
-const SA = [0,7,293,493,669,789,954,1160,1235,1364,1473,1596,1707,1750,1802,1901,
-  2029,2140,2250,2348,2483,2595,2673,2791,2855,2932,3159,3252,3340,3409,3469,3503,
-  3533,3606,3660,3705,3788,3970,4058,4133,4218,4272,4325,4414,4473,4510,4545,4583,
-  4612,4630,4675,4735,4784,4846,4901,4979,5075,5104,5126,5150,5163,5177,5188,5199,
-  5217,5229,5241,5271,5323,5375,5419,5447,5475,5495,5551,5591,5622,5672,5712,5758,
-  5800,5829,5848,5884,5909,5952,6020,6090,6145,6185,6253,6302,6369,6422,6438,6461,
-  6480,6498,6516,6542,6592,6608,6621,6638,6656,6671,6708,6714,6733,6749,6763,6774,
-  6785,6802,6811,6829];
+const {
+  escHtml,
+  escAttr,
+  initTheme,
+  toast,
+  fmtTime,
+  createCache,
+  fetchJsonWithRetry,
+  getCachedJson,
+  normalizeAudioUrl,
+  buildProxyAudioUrl,
+} = window.Common;
 
-const API_BASE         = 'https://api.alquran.cloud/v1';
-const MP3QURAN_BASE    = 'https://mp3quran.net/api/v3';
-const CACHE_PREFIX     = 'qiraat-cache-v3:';
-const THEME_KEY        = 'qiraat-theme';
-const SURAH_LIST_TTL   = 1000 * 60 * 60 * 12;
-const EDITION_TTL      = 1000 * 60 * 60 * 6;   // 6 h (was 7 days — too stale)
-const MP3QURAN_TTL     = 1000 * 60 * 60 * 24;
-const AUDIO_MAP_TTL    = 1000 * 60 * 60 * 6;
-const DEFAULT_TIMING_DIR = 'Alafasy_128kbps';
+const API_BASE      = 'https://api.alquran.cloud/v1';
+const SURAH_LIST_TTL = 1000 * 60 * 60 * 12;
+const EDITION_TTL    = 1000 * 60 * 60 * 6;
+const AUDIO_MAP_TTL  = 1000 * 60 * 60 * 6;
 
-// ── runtime state ──────────────────────────────────────────────────────────────
-const memCache        = new Map();
-const audioMapCache   = new Map();  // '{key}:{surah}' → ayah_map
-let QIRAAT            = [];         // loaded from /api/qiraat on boot
-let allSurahs         = [];
-let curSurah          = null;
-let activeTab         = 'mushaf';
-let selected          = new Set(['hafs', 'warsh']);
-let audios            = {};
+const cache          = createCache('qiraat-cache-v4:');
+const audioMapCache  = new Map();
+const recitersCache  = new Map();
+
+let QIRAAT               = [];
+let IMAMS                = [];
+let allSurahs            = [];
+let curSurah             = null;
+let activeTab            = 'mushaf';
+let selected             = new Set(['hafs', 'warsh']);
+let selectedReciters     = {}; // { qKey: reciter_id }
+let audios               = {};
 let resolvedAudioSources = {};
-let loadTicket        = 0;
-
-const MUQATTAAT_SURAHS = new Set([
-  1,2,3,7,10,11,12,13,14,15,19,20,26,27,28,29,30,31,32,36,38,
-  40,41,42,43,44,45,46,50,68,
-]);
-
-// Per-qiraa display config (color, reciter label, audio source hints).
-// Keyed by qiraa key; merged with server QIRAAT data at boot.
-//
-// Audio source priority (handled in resolveAudioSources):
-//   1. everyAyah   → everyayah.com per-file per-ayah (للروايات المتوفرة)
-//   2. qfPublicId  → QF public CDN, per-ayah
-//   3. audioId     → cdn.islamic.network per-ayah
-//   4. rewayaId    → mp3quran.net surah-level fallback
-const QIRAAT_UI = {
-  hafs:    { name: 'عاصم - حفص',           color: '#4cc9a0', reciter: 'رواية حفص',
-             everyAyah: 'Alafasy_128kbps', audioId: 'ar.alafasy', timingDir: 'Alafasy_128kbps' },
-
-  warsh:   { name: 'نافع - ورش',           color: '#d66a2e', reciter: 'رواية ورش',
-             everyAyah: 'warsh/warsh_Abdul_Basit_128kbps' },
-
-  // شعبة — mp3quran fallback
-  shouba:  { name: 'عاصم - شعبة',          color: '#f0a23a', reciter: 'رواية شعبة',
-             rewayaId: 15 },
-
-  // قالون — mp3quran fallback
-  qaloon:  { name: 'نافع - قالون',         color: '#c9a84c', reciter: 'رواية قالون',
-             rewayaId: 5 },
-
-  // البزي — mp3quran fallback
-  bazzi:   { name: 'ابن كثير - البزي',     color: '#4c9ac9', reciter: 'رواية البزي',
-             rewayaId: 4 },
-
-  // قنبل — mp3quran fallback
-  qumbul:  { name: 'ابن كثير - قنبل',      color: '#5f7ad9', reciter: 'رواية قنبل',
-             rewayaId: 6 },
-
-  // الدوري — mp3quran fallback
-  douri:   { name: 'أبو عمرو - الدوري',    color: '#7aad4c', reciter: 'رواية الدوري',
-             rewayaId: 13 },
-
-  // السوسي — نثبت على مصدر rewaya لتفادي أي عدم تطابق في الرواية
-  susi:    { name: 'أبو عمرو - السوسي',    color: '#5bc0a3', reciter: 'رواية السوسي',
-             rewayaId: 7 },
-
-  // هشام — mp3quran fallback
-  hisham:  { name: 'ابن عامر - هشام',      color: '#9c4cc9', reciter: 'رواية هشام',
-             rewayaId: 14 },
-
-  // خلاد — mp3quran fallback
-  khallad: { name: 'حمزة - خلاد',          color: '#c94c4c', reciter: 'رواية خلاد',
-             rewayaId: 11 },
-
-  // أبو الحارث — mp3quran fallback
-  harith:  { name: 'الكسائي - أبو الحارث', color: '#cc7f2a', reciter: 'رواية أبي الحارث',
-             rewayaId: 10 },
-
-  // ابن وردان — mp3quran fallback
-  wardan:  { name: 'أبو جعفر - ابن وردان', color: '#2aa2b0', reciter: 'رواية ابن وردان',
-             rewayaId: 12 },
-
-  // رويس — mp3quran fallback
-  ruways:  { name: 'يعقوب - رويس',         color: '#8cbf26', reciter: 'رواية رويس',
-             rewayaId: 15 },
-
-  // إسحاق — mp3quran fallback
-  ishaq:   { name: 'خلف العاشر - إسحاق',   color: '#d16b8a', reciter: 'رواية إسحاق',
-             rewayaId: 16 },
-};
-
-function escHtml(v) {
-  return String(v ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
-
-function escAttr(v) {
-  return escHtml(v);
-}
-
-// ── cache helpers ──────────────────────────────────────────────────────────────
-function cacheKey(key) { return `${CACHE_PREFIX}${key}`; }
-
-function readCache(key) {
-  const now = Date.now();
-  const mem = memCache.get(key);
-  if (mem) {
-    if (mem.exp > now) return { value: mem.value, fresh: true };
-    memCache.delete(key);
-  }
-  try {
-    const raw = localStorage.getItem(cacheKey(key));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (parsed.exp > now) {
-      memCache.set(key, parsed);
-      return { value: parsed.value, fresh: true };
-    } else {
-      localStorage.removeItem(cacheKey(key));
-    }
-  } catch {}
-  return null;
-}
-
-function _evictStorage() {
-  let entries = [];
-  const now = Date.now();
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && k.startsWith(CACHE_PREFIX)) {
-      try {
-        const parsed = JSON.parse(localStorage.getItem(k));
-        entries.push({ k, exp: parsed.exp });
-      } catch {
-        localStorage.removeItem(k); // corrupted
-      }
-    }
-  }
-  
-  // 1. Purge expired globally
-  const valid = [];
-  for (const e of entries) {
-    if (e.exp <= now) {
-      localStorage.removeItem(e.k);
-    } else {
-      valid.push(e);
-    }
-  }
-  
-  // 2. If still need space, purge oldest 20%
-  if (valid.length > 10) {
-    valid.sort((a, b) => a.exp - b.exp);
-    const toRemove = Math.ceil(valid.length * 0.2);
-    for (let i = 0; i < toRemove; i++) {
-      localStorage.removeItem(valid[i].k);
-    }
-  }
-}
-
-function writeCache(key, value, ttlMs) {
-  const entry = { exp: Date.now() + ttlMs, value };
-  memCache.set(key, entry);
-  try { 
-    localStorage.setItem(cacheKey(key), JSON.stringify(entry)); 
-  } catch { 
-    _evictStorage();
-    try {
-      localStorage.setItem(cacheKey(key), JSON.stringify(entry));
-    } catch {}
-  }
-}
-
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-async function fetchJsonWithRetry(url, { retries = 2, timeoutMs = 15000, backoffMs = 400 } = {}) {
-  let lastErr;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const ctrl  = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-      const resp = await fetch(url, { signal: ctrl.signal });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return await resp.json();
-    } catch (err) {
-      lastErr = err;
-      if (attempt < retries) await sleep(backoffMs * (attempt + 1));
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-  throw lastErr;
-}
-
-async function getCachedJson({ key, url, ttlMs, retries = 2 }) {
-  const cached = readCache(key);
-  if (cached?.fresh) return cached.value;
-  try {
-    const data = await fetchJsonWithRetry(url, { retries });
-    writeCache(key, data, ttlMs);
-    return data;
-  } catch (err) {
-    if (cached?.value) { toast('تم العرض من النسخة المحفوظة بسبب مشكلة اتصال'); return cached.value; }
-    throw err;
-  }
-}
+let loadTicket           = 0;
+let highlightDiffs       = true;
+let autoPlayEnabled      = false;
+let playbackSpeed        = 1;
 
 // ── boot ───────────────────────────────────────────────────────────────────────
 (async () => {
   initTheme();
-  await loadQiraat();
-  buildChips();
-  await loadSurahs();
+  const params = new URLSearchParams(window.location.search);
+  const qParam = params.get('q');
+  if (qParam) {
+    const keys = qParam.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    if (keys.length) selected = new Set(keys);
+  }
+  const tabParam = params.get('tab');
+  if (tabParam === 'compare' || tabParam === 'mushaf') {
+    activeTab = tabParam;
+    document.querySelectorAll('.tab[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === activeTab));
+  }
+
+  await Promise.all([loadQiraat(), loadSurahs()]);
+  buildGroups();
   syncQiraatBarToggle();
+
+  const surahNum = Number(params.get('surah'));
+  if (surahNum >= 1 && surahNum <= 114 && allSurahs.length) {
+    await pickSurah(surahNum, {
+      start: Number(params.get('start')) || null,
+      end: Number(params.get('end')) || null,
+    });
+  }
 })();
 
 async function loadQiraat() {
   try {
-    const list = await getCachedJson({
-      key: 'qiraat-list', url: '/api/qiraat', ttlMs: 1000 * 60 * 60 * 24,
-    });
-    // Merge server QIRAAT with local UI config
-    QIRAAT = list.map(q => ({ ...q, ...(QIRAAT_UI[q.key] || {}) }));
+    const [qList, iList] = await Promise.all([
+      getCachedJson(cache, { key: 'qiraat-list-v2', url: '/api/qiraat', ttlMs: 1000 * 60 * 60 * 24 }),
+      getCachedJson(cache, { key: 'imams-list-v1', url: '/api/imams', ttlMs: 1000 * 60 * 60 * 24 }).catch(() => []),
+    ]);
+    QIRAAT = Array.isArray(qList) ? qList : [];
+    IMAMS = Array.isArray(iList) ? iList : [];
   } catch {
-    // Fallback: build from local UI config if server unreachable
-    QIRAAT = Object.entries(QIRAAT_UI).map(([key, ui]) => ({ key, fallback: false, ...ui }));
-    toast('تعذّر تحميل القراءات من الخادم');
+    toast('تعذّر تحميل قائمة القراءات من الخادم');
   }
 }
 
-// ── theme ──────────────────────────────────────────────────────────────────────
-function initTheme() {
-  applyTheme(localStorage.getItem(THEME_KEY) || 'light');
-}
-function applyTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme);
-  const btn = document.getElementById('theme-toggle');
-  if (btn) {
-    btn.textContent = theme === 'light' ? '🌙' : '☀️';
-    btn.title = theme === 'light' ? 'التحويل للوضع الداكن' : 'التحويل للوضع الفاتح';
-    btn.setAttribute('aria-label', btn.title);
-  }
-}
-function toggleTheme() {
-  const next = (document.documentElement.getAttribute('data-theme') || 'light') === 'dark' ? 'light' : 'dark';
-  localStorage.setItem(THEME_KEY, next);
-  applyTheme(next);
+// ── URL state sync ─────────────────────────────────────────────────────────────
+function syncUrlState() {
+  try {
+    const url = new URL(window.location.href);
+    if (curSurah) url.searchParams.set('surah', String(curSurah.number));
+    else url.searchParams.delete('surah');
+
+    const startEl = document.getElementById('r-start');
+    const endEl = document.getElementById('r-end');
+    if (curSurah && startEl && endEl) {
+      url.searchParams.set('start', startEl.value);
+      url.searchParams.set('end', endEl.value);
+    }
+    url.searchParams.set('tab', activeTab);
+    if (selected.size) url.searchParams.set('q', Array.from(selected).join(','));
+    else url.searchParams.delete('q');
+    window.history.replaceState({}, '', url.toString());
+  } catch {}
 }
 
-// ── chips ──────────────────────────────────────────────────────────────────────
-function buildChips() {
-  const bar = document.getElementById('qiraat-bar');
-  const rng = bar.querySelector('.range-wrap');
+// ── grouped qiraat chips & presets ─────────────────────────────────────────────
+function buildGroups() {
+  const container = document.getElementById('q-groups');
+  if (!container) return;
+
+  const byImam = new Map();
   QIRAAT.forEach(q => {
-    const c = document.createElement('div');
-    c.className = `q-chip${selected.has(q.key) ? ' on' : ''}`;
-    c.dataset.key = q.key;
-    c.innerHTML = `<span class="dot" style="background:${escAttr(q.color || '#888')}"></span>${escHtml(q.name || q.key)}`;
-    c.onclick = () => {
-      selected[selected.has(q.key) ? 'delete' : 'add'](q.key);
-      c.classList.toggle('on', selected.has(q.key));
-    };
-    bar.insertBefore(c, rng);
+    const ik = q.imamKey || 'other';
+    if (!byImam.has(ik)) {
+      byImam.set(ik, { key: ik, name: q.imamName || ik, items: [] });
+    }
+    byImam.get(ik).items.push(q);
   });
+
+  const orderedGroups = [];
+  if (IMAMS.length) {
+    IMAMS.forEach(im => {
+      if (byImam.has(im.key)) orderedGroups.push(byImam.get(im.key));
+    });
+  }
+  byImam.forEach((grp, key) => {
+    if (!orderedGroups.some(g => g.key === key)) orderedGroups.push(grp);
+  });
+
+  container.innerHTML = orderedGroups.map(grp => `
+    <div class="q-group">
+      <span class="q-group-title">${escHtml(grp.name)}</span>
+      <div class="q-group-chips">
+        ${grp.items.map(q => {
+          const isOn = selected.has(q.key);
+          const isFull = q.textTier === 'kfgqpc_full' || q.textTier === 'full';
+          return `<button type="button" class="q-chip${isOn ? ' on' : ''}" data-key="${escAttr(q.key)}" title="${escAttr(q.displayName || q.rawiName || q.key)}">
+            <span class="dot" style="background:${escAttr(q.color || '#888')}"></span>
+            <span>${escHtml(q.rawiName || q.key)}</span>
+            ${isFull ? '' : '<span class="chip-mini-tag" title="نص حفص مع بيان الأوجه">أوجه</span>'}
+          </button>`;
+        }).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.q-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const k = btn.dataset.key;
+      if (selected.has(k)) selected.delete(k);
+      else selected.add(k);
+      btn.classList.toggle('on', selected.has(k));
+      syncUrlState();
+    });
+  });
+}
+
+function applyPreset(mode) {
+  if (mode === 'clear') {
+    selected.clear();
+  } else if (mode === 'kfgqpc') {
+    selected = new Set(QIRAAT.filter(q => q.textTier === 'kfgqpc_full' || q.textTier === 'full').map(q => q.key));
+  } else if (mode === 'ten') {
+    const seenImam = new Set();
+    const picks = [];
+    // Prefer Hafs for Asim and one primary riwaya per Imam
+    const preferred = ['qaloon', 'bazzi', 'douri', 'hisham', 'hafs', 'khalaf_hamzah', 'harith', 'wardan', 'ruways', 'ishaq'];
+    preferred.forEach(k => {
+      const q = QIRAAT.find(x => x.key === k);
+      if (q) {
+        selected.add(q.key);
+        seenImam.add(q.imamKey);
+        picks.push(q.key);
+      }
+    });
+    selected = new Set(picks);
+  }
+  buildGroups();
+  syncUrlState();
+  if (curSurah && selected.size) loadContent();
 }
 
 // ── surah list ─────────────────────────────────────────────────────────────────
 async function loadSurahs() {
   try {
-    const d = await getCachedJson({ key: 'surah-list', url: `${API_BASE}/surah`, ttlMs: SURAH_LIST_TTL, retries: 3 });
-    allSurahs = d.data;
+    const d = await getCachedJson(cache, { key: 'surah-list', url: `${API_BASE}/surah`, ttlMs: SURAH_LIST_TTL, retries: 3 });
+    allSurahs = d.data || [];
     renderList(allSurahs);
   } catch { toast('تعذّر تحميل السور'); }
 }
+
 function renderList(list) {
   const el = document.getElementById('surah-list');
   el.innerHTML = list.length
-    ? list.map(s => `<div class="s-item${curSurah?.number===s.number?' active':''}" onclick="pickSurah(${s.number})">
+    ? list.map(s => `<div class="s-item${curSurah?.number === s.number ? ' active' : ''}" onclick="pickSurah(${s.number})">
         <div class="s-num">${s.number}</div>
         <div class="s-name">${escHtml(s.name)}</div>
         <div class="s-count">${s.numberOfAyahs} آية</div>
       </div>`).join('')
     : '<div style="text-align:center;padding:20px;color:var(--txt2)">لا نتائج</div>';
 }
-function filterSurahs(q) { renderList(q ? allSurahs.filter(s => s.name.includes(q) || s.englishName.toLowerCase().includes(q.toLowerCase()) || String(s.number).startsWith(q)) : allSurahs); }
 
-async function pickSurah(num) {
+function filterArr(q) {
+  if (!q) return allSurahs;
+  const qq = q.toLowerCase();
+  return allSurahs.filter(s =>
+    s.name.includes(q) ||
+    (s.englishName || '').toLowerCase().includes(qq) ||
+    String(s.number).startsWith(q)
+  );
+}
+
+function filterSurahs(q) {
+  renderList(filterArr(q));
+}
+
+async function pickSurah(num, rangeOverride = null) {
   curSurah = allSurahs.find(s => s.number === num);
   if (!curSurah) return;
   stopAll();
   const max = curSurah.numberOfAyahs;
-  document.getElementById('r-start').max = max;
-  document.getElementById('r-end').max   = max;
-  document.getElementById('r-start').value = 1;
-  document.getElementById('r-end').value   = Math.min(max, 7);
+  const startEl = document.getElementById('r-start');
+  const endEl = document.getElementById('r-end');
+  startEl.max = max;
+  endEl.max = max;
+  startEl.value = rangeOverride?.start ? Math.max(1, Math.min(max, rangeOverride.start)) : 1;
+  endEl.value = rangeOverride?.end ? Math.max(Number(startEl.value), Math.min(max, rangeOverride.end)) : Math.min(max, 7);
+
   document.getElementById('tb-name').textContent = curSurah.name;
   document.getElementById('tb-meta').textContent =
     `${curSurah.englishName} · ${curSurah.revelationType === 'Meccan' ? 'مكية' : 'مدنية'} · ${max} آية`;
@@ -317,24 +227,19 @@ async function pickSurah(num) {
   await loadContent();
 }
 
-function filterArr(q) {
-  if (!q) return allSurahs;
-  const qq = q.toLowerCase();
-  return allSurahs.filter(s => s.name.includes(q) || s.englishName.toLowerCase().includes(qq) || String(s.number).startsWith(q));
-}
-
 function switchTab(tab) {
   activeTab = tab;
-  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.tab[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  syncUrlState();
   if (curSurah) loadContent();
 }
+
 function toggleSB() { document.getElementById('sidebar').classList.toggle('collapsed'); }
 
 function syncQiraatBarToggle() {
   const bar = document.getElementById('qiraat-bar');
   const btn = document.getElementById('qbar-toggle');
   if (!bar || !btn) return;
-
   const collapsed = bar.classList.contains('is-collapsed');
   btn.textContent = collapsed ? 'إظهار الأدوات' : 'إخفاء الأدوات';
   btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
@@ -347,178 +252,257 @@ function toggleQiraatBar() {
   syncQiraatBarToggle();
 }
 
-// ── audio source resolution ────────────────────────────────────────────────────
-function padN(n) { return String(n).padStart(3, '0'); }
-function globalN(surah, ayah) { return SA[surah - 1] + ayah; }
-
-function mapAyahForAudio(q, surahNumber, ayahNumber) {
-  return ayahNumber;
+function toggleDiffHighlight(enabled) {
+  highlightDiffs = Boolean(enabled);
+  if (curSurah) loadContent();
 }
 
-function normalizeServerUrl(server) {
-  if (!server) return null;
-  const s = server.endsWith('/') ? server : `${server}/`;
-  return s.replace(/^http:\/\//i, 'https://');
+function setAutoPlay(enabled) {
+  autoPlayEnabled = Boolean(enabled);
 }
 
-function parseSurahList(listValue) {
-  if (!listValue) return new Set();
-  return new Set(listValue.split(',').map(n => Number(n.trim())).filter(n => Number.isFinite(n) && n > 0));
-}
-
-function pickMoshafForSurah(moshafList, surahNumber) {
-  if (!Array.isArray(moshafList)) return null;
-  const enriched = moshafList
-    .filter(m => m?.server)
-    .map(m => ({ ...m, surahSet: parseSurahList(m.surah_list), surahTotalN: Number(m.surah_total) || 0 }));
-  const full = enriched.filter(m => m.surahTotalN >= 114).sort((a, b) => b.surahTotalN - a.surahTotalN);
-  if (full.length) return full[0];
-  const partial = enriched.filter(m => m.surahSet.has(surahNumber)).sort((a, b) => b.surahTotalN - a.surahTotalN);
-  return partial[0] || null;
-}
-
-async function getMp3QuranRecitersByRewaya(rewayaId) {
-  const d = await getCachedJson({
-    key: `mp3quran:rewaya:${rewayaId}`,
-    url: `${MP3QURAN_BASE}/reciters?language=ar&rewaya=${rewayaId}`,
-    ttlMs: MP3QURAN_TTL, retries: 2,
+function setPlaybackSpeed(val) {
+  const num = Number(val);
+  playbackSpeed = Number.isFinite(num) && num > 0 ? num : 1;
+  Object.values(audios).forEach(a => {
+    try { a.playbackRate = playbackSpeed; } catch {}
   });
-  return d.reciters || [];
 }
 
-/**
- * Fetch the full surah ayah→URL map from the backend's /api/audio/surah-map endpoint.
- * Returns null if unavailable.
- */
-async function fetchBackendAudioMap(qKey, surahNumber) {
-  const cKey = `audiomap:${qKey}:${surahNumber}`;
+// ── Arabic word diff highlighting vs Hafs ─────────────────────────────────────
+function _normToken(word) {
+  return String(word || '')
+    .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g, '')
+    .replace(/[\u0640]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/[ى]/g, 'ي')
+    .trim();
+}
+
+function renderAyahTextWithDiff(text, hafsText, qKey) {
+  if (!highlightDiffs || !hafsText || qKey === 'hafs') {
+    return escHtml(text);
+  }
+  const tokens = String(text || '').split(/\s+/).filter(Boolean);
+  const hafsTokens = String(hafsText || '').split(/\s+/).filter(Boolean);
+  const hafsNormSet = new Set(hafsTokens.map(_normToken).filter(Boolean));
+  const hafsExactSet = new Set(hafsTokens);
+
+  return tokens.map(tok => {
+    const norm = _normToken(tok);
+    // Highlight if neither exact token nor skeleton matches Hafs, or if exact diacritics differ on a non-trivial word
+    const differs = !hafsExactSet.has(tok) && (!norm || !hafsNormSet.has(norm) || hafsTokens.every(ht => _normToken(ht) === norm ? ht !== tok : true));
+    if (differs && norm.length > 0) {
+      return `<span class="diff-word">${escHtml(tok)}</span>`;
+    }
+    return escHtml(tok);
+  }).join(' ');
+}
+
+// ── audio source resolution (backend 4-tier) ──────────────────────────────────
+async function fetchBackendReciters(qKey, surahNumber) {
+  const rKey = `${qKey}:${surahNumber}`;
+  const cached = recitersCache.get(rKey);
+  if (cached && cached.exp > Date.now()) return cached.items;
+  try {
+    const d = await fetchJsonWithRetry(
+      `/api/audio/reciters?qiraa=${encodeURIComponent(qKey)}&surah=${surahNumber}`,
+      { retries: 1, timeoutMs: 10000 },
+    );
+    const items = d?.reciters || [];
+    recitersCache.set(rKey, { exp: Date.now() + AUDIO_MAP_TTL, items });
+    return items;
+  } catch {
+    return [];
+  }
+}
+
+async function fetchBackendAudioMap(qKey, surahNumber, reciterId = null) {
+  const cKey = `audiomap:${qKey}:${surahNumber}:${reciterId || 'auto'}`;
   const cached = audioMapCache.get(cKey);
-  if (cached && cached.exp > Date.now()) return cached.map;
+  if (cached && cached.exp > Date.now()) return cached.data;
 
   try {
-    const data = await fetchJsonWithRetry(
-      `/api/audio/surah-map?qiraa=${encodeURIComponent(qKey)}&surah=${surahNumber}`,
-      { retries: 1, timeoutMs: 12000 },
-    );
-    if (data?.available && data.ayah_map) {
-      audioMapCache.set(cKey, { exp: Date.now() + AUDIO_MAP_TTL, map: data.ayah_map });
-      return data.ayah_map;
+    let url = `/api/audio/surah-map?qiraa=${encodeURIComponent(qKey)}&surah=${surahNumber}`;
+    if (reciterId) url += `&reciter=${encodeURIComponent(reciterId)}`;
+    const data = await fetchJsonWithRetry(url, { retries: 1, timeoutMs: 14000 });
+    if (data?.available) {
+      audioMapCache.set(cKey, { exp: Date.now() + AUDIO_MAP_TTL, data });
+      return data;
     }
-  } catch { /* unavailable */ }
-  audioMapCache.set(cKey, { exp: Date.now() + AUDIO_MAP_TTL, map: null });
+  } catch {}
+  audioMapCache.set(cKey, { exp: Date.now() + AUDIO_MAP_TTL, data: null });
   return null;
 }
 
 async function resolveAudioSources(chosen, surahNumber) {
-  async function resolveMp3Source(q) {
-    if (!q.rewayaId) return null;
-    try {
-      const reciters = await getMp3QuranRecitersByRewaya(q.rewayaId);
-      const picked = reciters
-        .map(r => ({ r, m: pickMoshafForSurah(r.moshaf, surahNumber) }))
-        .filter(x => x.m?.server)
-        .map(x => {
-          const hasSurah = x.m.surahSet?.has(surahNumber) ? 1 : 0;
-          const full     = (Number(x.m.surah_total) || 0) >= 114 ? 1 : 0;
-          return { ...x, score: hasSurah * 100000 + full * 50000 + (Number(x.m.surah_total) || 0) };
-        })
-        .sort((a, b) => b.score - a.score)[0];
-
-      if (!picked?.m?.server) return null;
-
-      const base       = normalizeServerUrl(picked.m.server);
-      const chapterUrl = `${base}${padN(surahNumber)}.mp3`;
-
-      return {
-        mode: 'surah',
-        reciter: q.reciter,
-        url: chapterUrl,
-      };
-    } catch {
-      return null;
-    }
-  }
-
   const pairs = await Promise.all(chosen.map(async q => {
-    // ── priority 1: EveryAyah per-file (for supported qiraat) ───────────────
-    if (q.everyAyah) {
+    const prefReciter = selectedReciters[q.key] || null;
+    const [res, reciters] = await Promise.all([
+      fetchBackendAudioMap(q.key, surahNumber, prefReciter),
+      fetchBackendReciters(q.key, surahNumber),
+    ]);
+
+    if (!res || !res.available) {
+      return [q.key, { mode: 'none', reciter: q.displayName || q.rawiName, reciters }];
+    }
+
+    if (res.mode === 'ayah' && res.ayah_map) {
       return [q.key, {
-        mode: 'ayah',
-        reciter: q.reciter,
-        urlForAyah: n => `https://everyayah.com/data/${q.everyAyah}/${padN(surahNumber)}${padN(n)}.mp3`,
+        mode:        'ayah',
+        source:      res.source,
+        reciterId:   res.reciter_id || prefReciter,
+        reciter:     res.reciter_name || q.rawiName,
+        reciters,
+        urlForAyah:  n => res.ayah_map[String(n)] || res.ayah_map[n] || null,
       }];
     }
 
-    // ── priority 2: backend surah map (QF public CDN, full ayah list at once) ──
-    const ayahMap = await fetchBackendAudioMap(q.key, surahNumber);
-    if (ayahMap) {
+    if (res.mode === 'timed-surah' && res.surah_url && res.timings) {
       return [q.key, {
-        mode: 'ayah',
-        reciter: q.reciter || q.name,
-        urlForAyah: n => ayahMap[n] || null,
+        mode:        'timed-surah',
+        source:      res.source,
+        reciterId:   res.reciter_id || prefReciter,
+        reciter:     res.reciter_name || q.rawiName,
+        reciters,
+        surahUrl:    res.surah_url,
+        timings:     res.timings,
       }];
     }
 
-    // ── priority 3: alquran.cloud CDN (Hafs only, direct per-ayah) ────────────
-    if (q.audioId) {
+    if (res.mode === 'surah' && res.surah_url) {
       return [q.key, {
-        mode: 'ayah',
-        reciter: q.reciter,
-        urlForAyah: n => `https://cdn.islamic.network/quran/audio/128/${q.audioId}/${globalN(surahNumber, n)}.mp3`,
+        mode:        'surah',
+        source:      res.source,
+        reciterId:   res.reciter_id || prefReciter,
+        reciter:     res.reciter_name || q.rawiName,
+        reciters,
+        url:         res.surah_url,
       }];
     }
 
-    // ── priority 3 (Warsh only): mp3quran first, then EveryAyah fallback ───
-    if (q.preferMp3First) {
-      const mp3 = await resolveMp3Source(q);
-      if (mp3) return [q.key, mp3];
-    }
-
-    // ── priority 4: mp3quran.net (surah-level) ───────────────────────────────
-    // ملاحظة: timing segmentation غير موثوق هنا لأن timestamps الافاسي
-    // لا تنطبق على ملفات mp3quran لقراءات أخرى.
-    const mp3 = await resolveMp3Source(q);
-    if (mp3) return [q.key, mp3];
-
-    return [q.key, { mode: 'none', reciter: q.reciter }];
+    return [q.key, { mode: 'none', reciter: q.rawiName, reciters }];
   }));
   return Object.fromEntries(pairs);
 }
 
 function buildDefaultAudioSources(chosen) {
-  return Object.fromEntries(chosen.map(q => [q.key, { mode: 'none', reciter: `${q.reciter || q.name} · جارٍ تجهيز الصوت` }]));
+  return Object.fromEntries(chosen.map(q => [q.key, { mode: 'none', reciter: 'جارٍ تجهيز الصوت...', reciters: [] }]));
 }
 
-// ── rendering helpers (shared between mushaf + compare) ───────────────────────
-function textStatusBadge(status, error) {
-  if (status === 'error') {
-    const tip = error ? ` title="${escAttr(error)}"` : '';
-    return `<span class="fallback-badge" style="background:#8a2f2f"${tip}>تعذّر جلب النص</span>`;
+async function onReciterChange(qKey, newReciterId) {
+  if (!curSurah) return;
+  selectedReciters[qKey] = newReciterId;
+  stopAll();
+  const chosen = QIRAAT.filter(q => selected.has(q.key));
+  const res = await fetchBackendAudioMap(qKey, curSurah.number, newReciterId);
+  const existingReciters = resolvedAudioSources[qKey]?.reciters || [];
+
+  if (res?.available && res.mode === 'ayah' && res.ayah_map) {
+    resolvedAudioSources[qKey] = {
+      mode: 'ayah', source: res.source, reciterId: res.reciter_id,
+      reciter: res.reciter_name, reciters: existingReciters,
+      urlForAyah: n => res.ayah_map[String(n)] || res.ayah_map[n] || null,
+    };
+  } else if (res?.available && res.mode === 'timed-surah' && res.surah_url) {
+    resolvedAudioSources[qKey] = {
+      mode: 'timed-surah', source: res.source, reciterId: res.reciter_id,
+      reciter: res.reciter_name, reciters: existingReciters,
+      surahUrl: res.surah_url, timings: res.timings,
+    };
+  } else if (res?.available && res.mode === 'surah' && res.surah_url) {
+    resolvedAudioSources[qKey] = {
+      mode: 'surah', source: res.source, reciterId: res.reciter_id,
+      reciter: res.reciter_name, reciters: existingReciters,
+      url: res.surah_url,
+    };
   }
-  if (status === 'unavailable') return '<span class="fallback-badge" style="background:#646464">النص غير متاح</span>';
+
+  const start = +document.getElementById('r-start').value || 1;
+  const end = +document.getElementById('r-end').value || 7;
+  if (window._lastRenderArgs) {
+    const { textData, fallbackFlags, fetchMeta, variantsMap, countNotesMap } = window._lastRenderArgs;
+    renderCurrentView(chosen, textData, start, end, resolvedAudioSources, fallbackFlags, fetchMeta, variantsMap, countNotesMap);
+  }
+}
+
+// ── rendering helpers ──────────────────────────────────────────────────────────
+function textTierBadge(q, textState) {
+  if (textState?.status === 'error') {
+    const tip = textState.error ? ` title="${escAttr(textState.error)}"` : '';
+    return `<span class="fallback-badge" style="background:#8a2f2f;color:#fff"${tip}>تعذّر جلب النص</span>`;
+  }
+  if (textState?.status === 'unavailable') {
+    return '<span class="fallback-badge" style="background:#646464;color:#fff">النص غير متاح</span>';
+  }
+  if (q.textTier === 'kfgqpc_full') {
+    return '<span class="tier-badge tier-full" title="نص عثماني مخصص من مجمع الملك فهد">مجمع الملك فهد</span>';
+  }
+  if (q.textTier === 'annotated_hafs' || q.fallback) {
+    return '<span class="fallback-badge" title="يعرض نص حفص مع بيان أوجه القراءة المتوفرة">نص حفص + الأوجه</span>';
+  }
   return '';
 }
 
 function buildAudioMarkup(audio, pid, qKey, ayahNum) {
-  if (!audio) return '<div class="audio-player disabled" style="font-size:.72rem">لا يتوفر صوت</div>';
-  const { mode } = audio;
-  if (mode === 'ayah') {
+  if (!audio) return '<div class="audio-player disabled">لا يتوفر صوت</div>';
+  if (audio.mode === 'ayah') {
     const url = typeof audio.urlForAyah === 'function' ? audio.urlForAyah(ayahNum) : null;
-    if (!url) console.warn(`[audio] null URL — qKey=${qKey} ayah=${ayahNum} mode=ayah`);
-    return playerHTML(pid, url);
+    return playerHTML(pid, url, qKey, ayahNum);
   }
-  if (mode === 'ayah-async' || mode === 'timed-surah') return playerHTMLAsync(pid, qKey, ayahNum);
-  if (mode === 'surah') return '<div class="audio-player disabled" style="font-size:.75rem">الصوت متاح كاملًا أعلى الصفحة ☝️</div>';
-  return '<div class="audio-player disabled" style="font-size:.75rem">لا يتوفر صوت لهذه القراءة حالياً</div>';
+  if (audio.mode === 'timed-surah') {
+    const t = audio.timings?.[String(ayahNum)] || audio.timings?.[ayahNum];
+    if (!t) {
+      return '<div class="audio-player disabled">لا يتوفر توقيت لهذه الآية (استمع للسورة كاملة)</div>';
+    }
+    return playerHTMLTimed(pid, qKey, ayahNum, audio.surahUrl, t.start_ms, t.end_ms);
+  }
+  if (audio.mode === 'surah') {
+    return '<div class="audio-player disabled">الصوت متاح كاملًا أعلى الصفحة ☝️</div>';
+  }
+  return '<div class="audio-player disabled">لا يتوفر صوت لهذه القراءة حالياً</div>';
 }
 
-function buildQiraatLabel(q, audio, isFallback, stateBadge) {
+function buildVariantsMarkup(variantsList) {
+  if (!Array.isArray(variantsList) || !variantsList.length) return '';
+  return `<div class="q-variants">
+    <div class="qv-title">أوجه القراءة في هذه الآية:</div>
+    ${variantsList.map(v => `
+      <div class="qv-item">
+        ${v.hafs_word ? `<span class="qv-hafs">${escHtml(v.hafs_word)}</span> ← ` : ''}
+        <span class="qv-var">${escHtml(v.variant_text)}</span>
+        <span class="qv-rule">${v.rule_type === 'usul' ? 'أصول' : 'فرش'}</span>
+        ${v.note ? `<div class="qv-note">${escHtml(v.note)}</div>` : ''}
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+function buildCountNotesMarkup(notesList) {
+  if (!Array.isArray(notesList) || !notesList.length) return '';
+  return `<div class="count-notes-wrap">
+    ${notesList.map(n => `<span class="count-note-badge" title="${escAttr(n.note || '')}">🔢 ${escHtml(n.note || n.anchor_word || 'اختلاف عدّ الآي')}</span>`).join('')}
+  </div>`;
+}
+
+function buildReciterSelectMarkup(q, audio) {
+  const list = audio?.reciters || [];
+  if (list.length <= 1) return '';
+  return `<select class="reciter-select" onchange="onReciterChange('${escAttr(q.key)}', this.value)" aria-label="اختيار القارئ">
+    ${list.map(r => `<option value="${escAttr(r.id)}"${r.id === audio.reciterId ? ' selected' : ''}>${escHtml(r.name)}</option>`).join('')}
+  </select>`;
+}
+
+function buildQiraatLabel(q, audio, textState) {
+  const timedBadge = audio?.mode === 'timed-surah'
+    ? '<span class="tier-badge tier-timed" title="مقطع آية بآية من ملف السورة عبر توقيت الآيات">موقّت</span>'
+    : '';
   return `<div class="qc-label">
     <span class="qc-dot" style="background:${escAttr(q.color || '#888')}"></span>
-    <span class="qc-name">${escHtml(q.name || q.key)}</span>
+    <span class="qc-name">${escHtml(q.displayName || q.rawiName || q.key)}</span>
     <span class="qc-reciter">${escHtml(audio?.reciter || '')}</span>
-    ${isFallback ? '<span class="fallback-badge">نص حفص</span>' : ''}
-    ${stateBadge}
+    ${textTierBadge(q, textState)}
+    ${timedBadge}
   </div>`;
 }
 
@@ -532,28 +516,33 @@ async function loadContent() {
   const max   = curSurah.numberOfAyahs;
   if (start < 1 || end > max || start > end) { toast(`المدى يجب بين 1 و${max}`); return; }
 
+  syncUrlState();
   stopAll();
-  setContent('<div class="loader"><div class="loader-ring"></div><div class="loader-txt">جاري تحميل القراءات...</div></div>');
+  document.getElementById('content').innerHTML =
+    '<div class="loader"><div class="loader-ring"></div><div class="loader-txt">جاري تحميل القراءات...</div></div>';
 
-  const ticket  = ++loadTicket;
-  const chosen  = QIRAAT.filter(q => selected.has(q.key));
-  const textData = {}, fallbackFlags = {}, fetchMeta = {};
+  const ticket   = ++loadTicket;
+  // Always request hafs too so diff highlighting has a baseline
+  const chosen   = QIRAAT.filter(q => selected.has(q.key));
+  const reqKeys  = Array.from(new Set(['hafs', ...chosen.map(q => q.key)]));
+  const textData = {}, fallbackFlags = {}, fetchMeta = {}, variantsMap = {}, countNotesMap = {};
   resolvedAudioSources = {};
-  const t0 = performance.now();
 
   try {
-    const d = await getCachedJson({
-      key: `backend:surah:${curSurah.number}`,
-      url: `/api/surah/${curSurah.number}`,
+    const d = await getCachedJson(cache, {
+      key: `backend:surah:${curSurah.number}:${reqKeys.sort().join(',')}`,
+      url: `/api/surah/${curSurah.number}?qiraat=${encodeURIComponent(reqKeys.join(','))}`,
       ttlMs: EDITION_TTL, retries: 2,
     });
     if (d?.data) {
-      for (const q of chosen) {
-        const entry = d.data[q.key];
+      for (const key of reqKeys) {
+        const entry = d.data[key];
         if (entry) {
-          textData[q.key]     = entry.ayahs || null;
-          fallbackFlags[q.key] = entry.fallback || false;
-          fetchMeta[q.key]    = { status: entry.fetch_status || 'cached', error: entry.error || null };
+          textData[key]      = entry.ayahs || null;
+          fallbackFlags[key] = Boolean(entry.fallback);
+          fetchMeta[key]     = { status: entry.fetch_status || 'cached', error: entry.error || null };
+          variantsMap[key]   = entry.variants || {};
+          countNotesMap[key] = entry.count_notes || {};
         }
       }
     }
@@ -563,15 +552,14 @@ async function loadContent() {
   }
 
   if (ticket !== loadTicket) return;
-  renderCurrentView(chosen, textData, start, end, buildDefaultAudioSources(chosen), fallbackFlags, fetchMeta);
-  console.info('Rendered text in', Math.round(performance.now() - t0), 'ms');
+  window._lastRenderArgs = { textData, fallbackFlags, fetchMeta, variantsMap, countNotesMap };
+  renderCurrentView(chosen, textData, start, end, buildDefaultAudioSources(chosen), fallbackFlags, fetchMeta, variantsMap, countNotesMap);
 
   resolveAudioSources(chosen, curSurah.number)
     .then(sources => {
       if (ticket !== loadTicket) return;
       resolvedAudioSources = sources;
-      renderCurrentView(chosen, textData, start, end, sources, fallbackFlags, fetchMeta);
-      console.info('Hydrated audio in', Math.round(performance.now() - t0), 'ms');
+      renderCurrentView(chosen, textData, start, end, sources, fallbackFlags, fetchMeta, variantsMap, countNotesMap);
     })
     .catch(err => {
       if (ticket !== loadTicket) return;
@@ -580,13 +568,16 @@ async function loadContent() {
     });
 }
 
-function renderCurrentView(chosen, textData, start, end, audioSources, fallbackFlags, fetchMeta) {
-  if (activeTab === 'mushaf') renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags, fetchMeta);
-  else                        renderCompare(chosen, textData, start, end, audioSources, fallbackFlags, fetchMeta);
+function renderCurrentView(chosen, textData, start, end, audioSources, fallbackFlags, fetchMeta, variantsMap, countNotesMap) {
+  if (activeTab === 'mushaf') {
+    renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags, fetchMeta, variantsMap, countNotesMap);
+  } else {
+    renderCompare(chosen, textData, start, end, audioSources, fallbackFlags, fetchMeta, variantsMap, countNotesMap);
+  }
 }
 
 // ── mushaf view ────────────────────────────────────────────────────────────────
-function renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags, fetchMeta = {}) {
+function renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags, fetchMeta = {}, variantsMap = {}, countNotesMap = {}) {
   const showB = curSurah.number !== 9;
   const isF   = curSurah.number === 1;
 
@@ -594,8 +585,8 @@ function renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags,
     <div class="mushaf-hdr">
       <span class="orn r">❧</span><span class="orn l">❧</span>
       ${showB && !isF ? '<span class="basmala">بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ</span>' : ''}
-      <div class="mushaf-sname">${curSurah.name}</div>
-      <div class="mushaf-smeta">${curSurah.englishName} · ${curSurah.revelationType === 'Meccan' ? 'مكية' : 'مدنية'} · ${curSurah.numberOfAyahs} آية</div>`;
+      <div class="mushaf-sname">${escHtml(curSurah.name)}</div>
+      <div class="mushaf-smeta">${escHtml(curSurah.englishName)} · ${curSurah.revelationType === 'Meccan' ? 'مكية' : 'مدنية'} · ${curSurah.numberOfAyahs} آية</div>`;
 
   const surahModeQiraat = chosen.filter(q => audioSources[q.key]?.mode === 'surah');
   if (surahModeQiraat.length) {
@@ -603,8 +594,9 @@ function renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags,
     surahModeQiraat.forEach(q => {
       const audio = audioSources[q.key];
       h += `<div class="sura-audio-item">
-        <span class="sa-label" style="color:${escAttr(q.color)}">${escHtml(q.name)} (${escHtml(audio.reciter)}):</span>
-        ${playerHTML(`sura_${q.key}_${curSurah.number}`, audio.url)}
+        <span class="sa-label" style="color:${escAttr(q.color)}">${escHtml(q.displayName || q.rawiName)} (${escHtml(audio.reciter)}):</span>
+        ${buildReciterSelectMarkup(q, audio)}
+        ${playerHTML(`sura_${q.key}_${curSurah.number}`, audio.url, q.key, 0)}
       </div>`;
     });
     h += `</div>`;
@@ -612,24 +604,30 @@ function renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags,
   h += `</div><div class="mushaf-body">`;
 
   for (let i = start; i <= end; i++) {
-    const idx   = i - 1;
-    const delay = (i - start) * 55;
+    const idx      = i - 1;
+    const delay    = Math.min((i - start) * 40, 400);
+    const hafsTxt  = textData.hafs?.[idx]?.text || '';
 
     h += `<div class="ayah-block" style="animation-delay:${delay}ms">
       <div class="ayah-master"><span class="ayah-badge">${i}</span></div>
       <div class="cards-row">`;
 
     chosen.forEach(q => {
-      const txt   = textData[q.key]?.[idx]?.text || '(النص غير متاح لهذه القراءة)';
-      const audio = audioSources[q.key] || { mode: 'none', reciter: q.reciter };
-      const pid   = `m_${q.key}_${curSurah.number}_${i}`;
-      const isFallback = fallbackFlags[q.key] || q.fallback;
+      const txt        = textData[q.key]?.[idx]?.text || '(النص غير متاح لهذه القراءة)';
+      const audio      = audioSources[q.key] || { mode: 'none', reciter: q.rawiName };
+      const pid        = `m_${q.key}_${curSurah.number}_${i}`;
+      const isFallback = Boolean(fallbackFlags[q.key] || q.fallback);
       const textState  = fetchMeta[q.key] || { status: 'cached', error: null };
-      const qFont = q.key === 'hafs' ? "'Amiri Quran','Amiri',serif" : "'Amiri',serif";
+      const qFont      = q.fontFamily || "'Amiri Quran','Amiri',serif";
+      const vList      = variantsMap[q.key]?.[String(i)] || [];
+      const cNotes     = countNotesMap[q.key]?.[String(i)] || [];
 
       h += `<div class="q-card${isFallback ? ' is-fallback' : ''}">
-        ${buildQiraatLabel(q, audio, isFallback, textStatusBadge(textState.status, textState.error))}
-        <div class="qc-text" style="font-family:${qFont}">${escHtml(txt)}</div>
+        ${buildQiraatLabel(q, audio, textState)}
+        ${buildReciterSelectMarkup(q, audio)}
+        ${buildCountNotesMarkup(cNotes)}
+        <div class="qc-text" style="font-family:${escAttr(qFont)}">${renderAyahTextWithDiff(txt, hafsTxt, q.key)}</div>
+        ${buildVariantsMarkup(vList)}
         ${buildAudioMarkup(audio, pid, q.key, i)}
       </div>`;
     });
@@ -637,42 +635,48 @@ function renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags,
     h += '</div></div>';
   }
   h += '</div></div>';
-  setContent(h);
-  bindPlayers();
+  document.getElementById('content').innerHTML = h;
 }
 
 // ── compare view ───────────────────────────────────────────────────────────────
-function renderCompare(chosen, textData, start, end, audioSources, fallbackFlags, fetchMeta = {}) {
-  const cols = Math.min(chosen.length, 3);
+function renderCompare(chosen, textData, start, end, audioSources, fallbackFlags, fetchMeta = {}, variantsMap = {}, countNotesMap = {}) {
+  const cols = Math.min(chosen.length || 1, 3);
   let h = `<div class="compare-grid" style="grid-template-columns:repeat(${cols},1fr)">`;
 
   chosen.forEach(q => {
-    const audio      = audioSources[q.key] || { mode: 'none', reciter: q.reciter };
-    const isFallback = fallbackFlags[q.key] || q.fallback;
+    const audio      = audioSources[q.key] || { mode: 'none', reciter: q.rawiName };
+    const isFallback = Boolean(fallbackFlags[q.key] || q.fallback);
     const textState  = fetchMeta[q.key] || { status: 'cached', error: null };
-    const stateBadge = textStatusBadge(textState.status, textState.error);
-    const headAudio  = audio.mode === 'surah' ? playerHTML(`cmp_sura_${q.key}_${curSurah.number}`, audio.url) : '';
+    const headAudio  = audio.mode === 'surah' ? playerHTML(`cmp_sura_${q.key}_${curSurah.number}`, audio.url, q.key, 0) : '';
+    const qFont      = q.fontFamily || "'Amiri Quran','Amiri',serif";
 
     h += `<div class="cmp-col${isFallback ? ' is-fallback' : ''}">
       <div class="cmp-head">
         <div class="cmp-head-name">
           <span class="qc-dot" style="background:${escAttr(q.color)}"></span>
-          ${escHtml(q.name)}${isFallback ? ' <span class="fallback-badge">نص حفص</span>' : ''}${stateBadge ? ` ${stateBadge}` : ''}
+          ${escHtml(q.displayName || q.rawiName)}
+          ${textTierBadge(q, textState)}
         </div>
-        <div class="cmp-head-sub">${escHtml(audio.reciter)}</div>
+        <div class="cmp-head-sub">${escHtml(audio.reciter || '')}</div>
+        ${buildReciterSelectMarkup(q, audio)}
         ${headAudio ? `<div style="margin-top:8px">${headAudio}</div>` : ''}
       </div>
       <div class="cmp-body">`;
 
     for (let i = start; i <= end; i++) {
-      const idx  = i - 1;
-      const txt  = textData[q.key]?.[idx]?.text || '(النص غير متاح لهذه القراءة)';
-      const pid  = `c_${q.key}_${curSurah.number}_${i}`;
-      const qFont = q.key === 'hafs' ? "'Amiri Quran','Amiri',serif" : "'Amiri',serif";
+      const idx     = i - 1;
+      const txt     = textData[q.key]?.[idx]?.text || '(النص غير متاح لهذه القراءة)';
+      const hafsTxt = textData.hafs?.[idx]?.text || '';
+      const pid     = `c_${q.key}_${curSurah.number}_${i}`;
+      const vList   = variantsMap[q.key]?.[String(i)] || [];
+      const cNotes  = countNotesMap[q.key]?.[String(i)] || [];
+
       h += `<div class="cmp-ayah">
         <div class="cmp-num">${i}</div>
-        <div style="flex:1">
-          <div class="cmp-text" style="font-family:${qFont}">${escHtml(txt)}</div>
+        <div style="flex:1;min-width:0">
+          ${buildCountNotesMarkup(cNotes)}
+          <div class="cmp-text" style="font-family:${escAttr(qFont)}">${renderAyahTextWithDiff(txt, hafsTxt, q.key)}</div>
+          ${buildVariantsMarkup(vList)}
           ${buildAudioMarkup(audio, pid, q.key, i)}
         </div>
       </div>`;
@@ -681,85 +685,48 @@ function renderCompare(chosen, textData, start, end, audioSources, fallbackFlags
   });
 
   h += '</div>';
-  setContent(h);
-  bindPlayers();
+  document.getElementById('content').innerHTML = h;
 }
 
 // ── player HTML ────────────────────────────────────────────────────────────────
-function playerHTML(pid, url) {
+function playerHTML(pid, url, qKey = '', ayahNum = 0) {
   if (!url) return '<div class="audio-player disabled">لا يتوفر صوت مطابق لهذه القراءة عبر المصدر الحالي</div>';
-  return `<div class="audio-player" data-pid="${escAttr(pid)}" data-url="${escAttr(url)}">
-    <button class="play-btn" id="pbtn-${pid}">▶</button>
-    <div class="prog-track" id="ptrk-${pid}">
-      <div class="prog-rail"><div class="prog-bar" id="pbar-${pid}"></div></div>
+  return `<div class="audio-player" data-pid="${escAttr(pid)}" data-url="${escAttr(url)}" data-qkey="${escAttr(qKey)}" data-ayah="${ayahNum}">
+    <button class="play-btn" id="pbtn-${escAttr(pid)}">▶</button>
+    <div class="prog-track" id="ptrk-${escAttr(pid)}">
+      <div class="prog-rail"><div class="prog-bar" id="pbar-${escAttr(pid)}"></div></div>
     </div>
-    <span class="time-lbl" id="ptim-${pid}">0:00</span>
+    <span class="time-lbl" id="ptim-${escAttr(pid)}">0:00</span>
   </div>`;
 }
 
-function playerHTMLAsync(pid, qKey, ayah) {
-  return `<div class="audio-player" data-pid="${pid}" data-url-fn="true" data-qkey="${qKey}" data-ayah="${ayah}">
-    <button class="play-btn" id="pbtn-${pid}">▶</button>
-    <div class="prog-track" id="ptrk-${pid}">
-      <div class="prog-rail"><div class="prog-bar" id="pbar-${pid}"></div></div>
+function playerHTMLTimed(pid, qKey, ayahNum, surahUrl, startMs, endMs) {
+  return `<div class="audio-player" data-pid="${escAttr(pid)}" data-url="${escAttr(surahUrl)}" data-qkey="${escAttr(qKey)}" data-ayah="${ayahNum}" data-start-ms="${startMs}" data-end-ms="${endMs}">
+    <button class="play-btn" id="pbtn-${escAttr(pid)}">▶</button>
+    <div class="prog-track" id="ptrk-${escAttr(pid)}">
+      <div class="prog-rail"><div class="prog-bar" id="pbar-${escAttr(pid)}"></div></div>
     </div>
-    <span class="time-lbl" id="ptim-${pid}">0:00</span>
+    <span class="time-lbl" id="ptim-${escAttr(pid)}">0:00</span>
   </div>`;
 }
 
-function normalizeAudioUrl(url) {
-  if (typeof url !== 'string') return null;
-  const trimmed = url.trim();
-  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return null;
-  try {
-    const parsed = new URL(trimmed, window.location.href);
-    if (!['http:', 'https:', 'blob:', 'data:'].includes(parsed.protocol)) return null;
-    return parsed.href;
-  } catch {
-    return null;
-  }
-}
-
-function disablePlayer(pid, msg = 'لا يتوفر صوت مطابق لهذه القراءة عبر المصدر الحالي') {
-  const holder = document.querySelector(`.audio-player[data-pid="${pid}"]`);
-  if (!holder) return;
-  holder.outerHTML = `<div class="audio-player disabled">${msg}</div>`;
-}
-
-// ── player binding + playback ──────────────────────────────────────────────────
-function bindPlayers() {
-  // Deprecated: O(N) looping bypassed in favor of global Event Delegation below
-}
-
+// ── global event delegation + playback ─────────────────────────────────────────
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('.play-btn');
   if (btn) {
     e.stopPropagation();
     const player = btn.closest('.audio-player');
     if (!player) return;
-    
-    const pid     = player.dataset.pid;
-    const rawUrl  = player.dataset.url;
-    const url     = (rawUrl && rawUrl !== 'null' && rawUrl !== 'undefined') ? rawUrl : null;
-    const isAsync = player.dataset.urlFn === 'true';
-    const qKey    = player.dataset.qkey;
-    const ayah    = Number(player.dataset.ayah);
-
-    if (isAsync) {
-      const source = resolvedAudioSources[qKey];
-      if ((source?.mode === 'ayah-async' || source?.mode === 'timed-surah') && typeof source.urlForAyah === 'function') {
-        togglePlay(pid, null, () => source.mode === 'timed-surah'
-          ? resolveTimedAyahPlayback(source, ayah)
-          : source.urlForAyah(ayah));
-      } else {
-        toast('مصدر الصوت غير متاح');
-      }
-    } else {
-      togglePlay(pid, url);
-    }
+    const pid = player.dataset.pid;
+    const url = player.dataset.url;
+    const startMs = player.dataset.startMs !== undefined ? Number(player.dataset.startMs) : null;
+    const endMs   = player.dataset.endMs   !== undefined ? Number(player.dataset.endMs)   : null;
+    const qKey    = player.dataset.qkey || '';
+    const ayah    = Number(player.dataset.ayah || 0);
+    togglePlay(pid, url, { startMs, endMs, qKey, ayah });
     return;
   }
-  
+
   const trk = e.target.closest('.prog-track');
   if (trk) {
     const player = trk.closest('.audio-player');
@@ -767,107 +734,107 @@ document.addEventListener('click', (e) => {
   }
 });
 
-async function resolveTimedAyahPlayback(source, ayahNumber) {
-  const segUrl = await source.urlForAyah(ayahNumber);
-  if (segUrl) return segUrl;
-
-  if (typeof fetchTimingsForSurah === 'function' && source?.timingDir && source?.surahUrl && curSurah?.number) {
-    const timings   = await fetchTimingsForSurah(source.timingDir, curSurah.number);
-    const ayahKey   = `${padN(curSurah.number)}${padN(ayahNumber)}`;
-    const ayahTiming = timings?.get(ayahKey);
-    if (ayahTiming) return { url: source.surahUrl, startSec: ayahTiming.startMs / 1000, endSec: ayahTiming.endMs / 1000 };
+function _playNextInSequence(qKey, ayah) {
+  if (!autoPlayEnabled || !qKey || !ayah) return;
+  const prefix = activeTab === 'mushaf' ? 'm' : 'c';
+  const nextPid = `${prefix}_${qKey}_${curSurah.number}_${ayah + 1}`;
+  const nextPlayer = document.querySelector(`.audio-player[data-pid="${nextPid}"]`);
+  if (nextPlayer) {
+    const nextBtn = nextPlayer.querySelector('.play-btn');
+    if (nextBtn) nextBtn.click();
   }
-  return source?.surahUrl || null;
 }
 
-async function togglePlay(pid, url, urlFn) {
-  // Pause all other active players
+async function togglePlay(pid, rawUrl, { startMs = null, endMs = null, qKey = '', ayah = 0 } = {}) {
   Object.entries(audios).forEach(([k, a]) => {
     if (k !== pid && !a.paused) { a.pause(); setState(k, 'idle'); }
   });
 
+  const hasWindow = Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs;
+  const startSec = hasWindow ? startMs / 1000 : null;
+  const endSec   = hasWindow ? endMs   / 1000 : null;
+
   let a = audios[pid];
   if (!a) {
     a = new Audio();
+    a._proxied = false;
+    a._windowStartSec = startSec;
+    a._windowEndSec = endSec;
     audios[pid] = a;
+
     a.addEventListener('timeupdate', () => {
       updateBar(pid, a);
       if (Number.isFinite(a._windowEndSec) && a.currentTime >= a._windowEndSec) {
         a.pause();
-        if (Number.isFinite(a._windowStartSec)) a.currentTime = a._windowStartSec;
+        a.currentTime = a._windowStartSec || 0;
         setState(pid, 'idle');
+        resetBar(pid);
+        _playNextInSequence(qKey, ayah);
       }
     });
-    a.addEventListener('ended',  () => { setState(pid, 'idle'); resetBar(pid); });
-    a.addEventListener('error',  () => { toast('ملف الصوت غير متاح أو هناك مشكلة في الاتصال'); setState(pid, 'idle'); });
+
+    a.addEventListener('ended', () => {
+      setState(pid, 'idle');
+      resetBar(pid);
+      _playNextInSequence(qKey, ayah);
+    });
+
+    a.addEventListener('error', () => {
+      if (!a._proxied) {
+        const proxyUrl = buildProxyAudioUrl(a._origUrl);
+        if (proxyUrl) {
+          a._proxied = true;
+          a.src = proxyUrl;
+          a.playbackRate = playbackSpeed;
+          a.play().catch(() => {
+            toast('ملف الصوت غير متاح');
+            setState(pid, 'idle');
+          });
+          return;
+        }
+      }
+      toast('ملف الصوت غير متاح أو هناك مشكلة في الاتصال');
+      setState(pid, 'idle');
+    });
   }
 
-  // Use a._srcSet flag — comparing a.src === '' is unreliable because the browser
-  // immediately resolves '' to the current page URL, causing NotSupportedError on play().
-  const needsUrl = !a._srcSet;
-  let playbackWindow = null;
-  let shouldUpdateWindow = false;
-
-  if (needsUrl) {
-    let resolvedUrl = url;
-    if (!resolvedUrl && typeof urlFn === 'function') {
-      setState(pid, 'loading');
-      try {
-        const resolved = await urlFn();
-        if (typeof resolved === 'string') {
-          resolvedUrl = resolved;
-          shouldUpdateWindow = true;
-        } else if (resolved && typeof resolved === 'object') {
-          resolvedUrl = resolved.url || null;
-          playbackWindow = { startSec: resolved.startSec, endSec: resolved.endSec };
-          shouldUpdateWindow = true;
-        }
-      } catch (err) {
-        console.error('Audio URL resolution error:', err);
-      }
-    }
-    if (!resolvedUrl) { toast('تعذّر تحميل الصوت'); setState(pid, 'idle'); return; }
-    resolvedUrl = normalizeAudioUrl(resolvedUrl);
-    if (!resolvedUrl) {
-      toast('تعذّر تحميل الصوت'); setState(pid, 'idle'); return;
-    }
-    try {
-      a.src = resolvedUrl;
-    } catch {
-      disablePlayer(pid);
-      toast('مصدر الصوت غير مدعوم لهذه القراءة');
+  if (!a._srcSet) {
+    const cleanUrl = normalizeAudioUrl(rawUrl);
+    if (!cleanUrl) {
+      toast('تعذّر تحميل الصوت');
       setState(pid, 'idle');
       return;
     }
+    a._origUrl = cleanUrl;
+    a.src = cleanUrl;
     a._srcSet = true;
   }
 
-  if (shouldUpdateWindow) {
-    a._windowStartSec = (playbackWindow && Number.isFinite(playbackWindow.startSec)) ? playbackWindow.startSec : null;
-    a._windowEndSec   = (playbackWindow && Number.isFinite(playbackWindow.endSec))   ? playbackWindow.endSec   : null;
-  }
+  a.playbackRate = playbackSpeed;
 
   if (a.paused) {
     setState(pid, 'loading');
-    if (Number.isFinite(a._windowStartSec)) {
-      try { a.currentTime = a._windowStartSec; } catch { /* before metadata load */ }
-    }
-    a.play().then(() => setState(pid, 'playing')).catch(err => {
-      console.error('Audio play error:', err);
-      if (err?.name === 'NotSupportedError') {
-        disablePlayer(pid);
+    const playAtWindow = () => {
+      if (Number.isFinite(a._windowStartSec)) {
         try {
-          a.removeAttribute('src');
-          a.load();
-          a._srcSet = false;
-        } catch { /* no-op */ }
-        toast('هذا المصدر غير مدعوم لهذه الرواية في هذه الآية');
-        setState(pid, 'idle');
-        return;
+          if (a.currentTime < a._windowStartSec || a.currentTime >= a._windowEndSec) {
+            a.currentTime = a._windowStartSec;
+          }
+        } catch {}
       }
-      toast('تعذّر تشغيل الصوت');
-      setState(pid, 'idle');
-    });
+      a.play().then(() => setState(pid, 'playing')).catch(err => {
+        console.error('Audio play error:', err);
+        setState(pid, 'idle');
+        toast('تعذّر تشغيل الصوت');
+      });
+    };
+
+    if (Number.isFinite(a._windowStartSec) && a.readyState < 1) {
+      a.addEventListener('loadedmetadata', () => playAtWindow(), { once: true });
+      a.load();
+    } else {
+      playAtWindow();
+    }
   } else {
     a.pause();
     setState(pid, 'idle');
@@ -885,20 +852,35 @@ function updateBar(pid, a) {
   const bar = document.getElementById(`pbar-${pid}`);
   const tim = document.getElementById(`ptim-${pid}`);
   if (!bar) return;
+
+  if (Number.isFinite(a._windowStartSec) && Number.isFinite(a._windowEndSec)) {
+    const winDur = Math.max(0.1, a._windowEndSec - a._windowStartSec);
+    const elapsed = Math.max(0, a.currentTime - a._windowStartSec);
+    bar.style.width = `${Math.min(100, (elapsed / winDur) * 100)}%`;
+    if (tim) tim.textContent = fmtTime(elapsed);
+    return;
+  }
+
   bar.style.width = `${a.duration ? (a.currentTime / a.duration) * 100 : 0}%`;
-  if (tim) tim.textContent = fmt(a.currentTime);
+  if (tim) tim.textContent = fmtTime(a.currentTime);
 }
 
 function resetBar(pid) { updateBar(pid, { currentTime: 0, duration: 0 }); }
 
 function seek(pid, e, el) {
   const a = audios[pid];
-  if (!a?.duration) return;
+  if (!a) return;
   const r = el.getBoundingClientRect();
   if (!Number.isFinite(r.width) || r.width <= 0) return;
   const x = Math.max(0, Math.min(r.width, e.clientX - r.left));
   const ratio = x / r.width;
-  a.currentTime = ratio * a.duration;
+
+  if (Number.isFinite(a._windowStartSec) && Number.isFinite(a._windowEndSec)) {
+    const winDur = a._windowEndSec - a._windowStartSec;
+    a.currentTime = a._windowStartSec + ratio * winDur;
+    return;
+  }
+  if (a.duration) a.currentTime = ratio * a.duration;
 }
 
 function stopAll() {
@@ -906,18 +888,21 @@ function stopAll() {
     try {
       a.pause();
       a.removeAttribute('src');
-      a.load();       // reset element — clears network request and error state
+      a.load();
       a._srcSet = false;
-    } catch { /* no-op */ }
+    } catch {}
   });
   audios = {};
 }
 
-function fmt(s) { return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`; }
-function setContent(html) { document.getElementById('content').innerHTML = html; }
-function toast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3000);
-}
+window.toggleSB = toggleSB;
+window.toggleQiraatBar = toggleQiraatBar;
+window.filterSurahs = filterSurahs;
+window.pickSurah = pickSurah;
+window.loadContent = loadContent;
+window.switchTab = switchTab;
+window.applyPreset = applyPreset;
+window.toggleDiffHighlight = toggleDiffHighlight;
+window.setAutoPlay = setAutoPlay;
+window.setPlaybackSpeed = setPlaybackSpeed;
+window.onReciterChange = onReciterChange;

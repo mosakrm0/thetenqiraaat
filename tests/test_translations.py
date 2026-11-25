@@ -1,0 +1,62 @@
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+import diskcache
+
+from services import translations as tr_svc
+
+
+class TestTranslationsService(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        self.cache = diskcache.Cache(str(Path(self.tmpdir.name) / 'cache'))
+        self.c1 = patch('services.translations.get_cache', return_value=self.cache)
+        self.c2 = patch('services.audio.get_cache', return_value=self.cache)
+        self.c1.start()
+        self.c2.start()
+
+    def tearDown(self):
+        self.c2.stop()
+        self.c1.stop()
+        self.cache.close()
+        self.tmpdir.cleanup()
+
+    def test_catalog_includes_text_only_and_audio_backed(self):
+        self.cache.set('everyayah_recitations', {
+            'ayahCount': [7],
+            '45': {'subfolder': 'translations/English/Sahih', 'name': 'English Translation'},
+        }, expire=3600)
+        self.cache.set('alquran_translations', [
+            {'key': 'alquran:en.sahih', 'source': 'alquran', 'edition': 'en.sahih', 'name': 'Sahih', 'englishName': 'Sahih', 'language': 'en', 'direction': 'ltr', 'mode': 'ayah-text'},
+            {'key': 'alquran:fr.hamidullah', 'source': 'alquran', 'edition': 'fr.hamidullah', 'name': 'Hamidullah', 'englishName': 'Hamidullah', 'language': 'fr', 'direction': 'ltr', 'mode': 'ayah-text'},
+        ], expire=3600)
+        self.cache.set('fawaz_editions', [], expire=3600)
+
+        items = tr_svc.unified_translations_catalog()
+        keys = {x['key']: x for x in items}
+        self.assertIn('hafs_ar_text', keys)
+        self.assertIn('alquran:en.sahih', keys)
+        self.assertIn('alquran:fr.hamidullah', keys)
+        self.assertTrue(keys['alquran:en.sahih']['has_audio'])
+        self.assertFalse(keys['alquran:fr.hamidullah']['has_audio'])
+
+    def test_fetch_translations_allows_multiple_editions_same_language(self):
+        self.cache.set('everyayah_recitations', {'ayahCount': [7]}, expire=3600)
+        self.cache.set('alquran_translations', [
+            {'key': 'alquran:en.sahih', 'source': 'alquran', 'edition': 'en.sahih', 'name': 'Sahih', 'englishName': 'Sahih', 'language': 'en', 'direction': 'ltr', 'mode': 'ayah-text'},
+            {'key': 'alquran:en.pickthall', 'source': 'alquran', 'edition': 'en.pickthall', 'name': 'Pickthall', 'englishName': 'Pickthall', 'language': 'en', 'direction': 'ltr', 'mode': 'ayah-text'},
+        ], expire=3600)
+        self.cache.set('fawaz_editions', [], expire=3600)
+        self.cache.set('tr_alquran_en.sahih_1', {1: 'In the name of Allah'}, expire=3600)
+        self.cache.set('tr_alquran_en.pickthall_1', {1: 'In the name of Allah, the Beneficent'}, expire=3600)
+
+        data, max_ayah = tr_svc.fetch_translations_for_surah(1, ['alquran:en.sahih', 'alquran:en.pickthall'])
+        self.assertEqual(max_ayah, 1)
+        self.assertIn('alquran:en.sahih', data)
+        self.assertIn('alquran:en.pickthall', data)
+
+
+if __name__ == '__main__':
+    unittest.main()

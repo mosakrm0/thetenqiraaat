@@ -3,26 +3,31 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>الصفحة الرئيسية</title>
+<title>القراءات العشر والترجمات القرآنية</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:wght@400;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <main class="landing-wrap">
   <header class="hero">
-    <button class="landing-theme-toggle" id="landing-theme-toggle" type="button" aria-label="الوضع الداكن" title="الوضع الداكن">🌙</button>
+    <button class="landing-theme-toggle" id="landing-theme-toggle" type="button" onclick="toggleTheme()" aria-label="الوضع الداكن" title="الوضع الداكن">🌙</button>
     <h1>اختر تجربة المقارنة</h1>
-    <p class="hero-sub">اختر القسم الذي تريد الدخول إليه.</p>
+    <p class="hero-sub">مقارنة القراءات العشر المتواترة والترجمات القرآنية آية بآية مع التلاوات الصوتية.</p>
   </header>
 
   <section class="choice-grid" aria-label="خيارات المقارنة">
     <a class="choice-card" href="/readings">
-      <h2>مقارنة القراءات</h2>
-      <p>قارن نص الآيات بين القراءات المتاحة آية بآية داخل نفس السورة، مع إمكانية التنقل السريع بين الآيات والاستماع للصوت حسب المصدر المتوفر لكل قراءة.</p>
+      <h2>مقارنة القراءات العشر</h2>
+      <p>قارن الروايات العشرين للقراءات العشر آية بآية، مع الخطوط العثمانية المعتمدة من مجمع الملك فهد، وإبراز الفروق، وبيان أوجه الفرش والأصول وعدّ الآي، وتشغيل التلاوات آية بآية.</p>
+      <span class="choice-cta">دخول قسم القراءات ←</span>
     </a>
 
     <a class="choice-card" href="/translations">
       <h2>مقارنة الترجمات</h2>
-      <p>اختر الترجمات المتوفرة وقارنها بشكل واضح ومباشر لفهم الفروق في المعاني، مع عرض منظم يسهل القراءة والمتابعة آية بآية.</p>
+      <p>قارن عشرات الترجمات القرآنية بمختلف اللغات بشكل منظم آية بآية، مع إمكانية البحث والتصفية وتشغيل الترجمات الصوتية المتوفرة.</p>
+      <span class="choice-cta">دخول قسم الترجمات ←</span>
     </a>
   </section>
 
@@ -30,35 +35,7 @@
     <a href="/feedback">تواصل واقتراحات</a>
   </footer>
 </main>
-<script>
-  (function () {
-    const THEME_KEY = 'qiraat-theme';
-    const root = document.documentElement;
-    const btn = document.getElementById('landing-theme-toggle');
-
-    function applyTheme(theme) {
-      const safeTheme = theme === 'dark' ? 'dark' : 'light';
-      root.setAttribute('data-theme', safeTheme);
-      if (!btn) return;
-      const isLight = safeTheme === 'light';
-      btn.textContent = isLight ? '🌙' : '☀️';
-      btn.title = isLight ? 'الوضع الداكن' : 'الوضع الفاتح';
-      btn.setAttribute('aria-label', btn.title);
-    }
-
-    const saved = localStorage.getItem(THEME_KEY);
-    const initialTheme = saved === 'dark' ? 'dark' : 'light';
-    applyTheme(initialTheme);
-
-    if (btn) {
-      btn.addEventListener('click', function () {
-        const now = root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
-        const next = now === 'dark' ? 'light' : 'dark';
-        localStorage.setItem(THEME_KEY, next);
-        applyTheme(next);
-      });
-    }
-  })();
-</script>
+<script src="/static/common.js"></script>
+<script>Common.initTheme();</script>
 </body>
 </html>

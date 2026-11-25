@@ -11,7 +11,9 @@ ENV PORT=7860
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py ./
+COPY config.py db.py app.py seed_db.py ./
+COPY services ./services
+COPY data ./data
 COPY quran.db ./
 COPY templates ./templates
 COPY static ./static

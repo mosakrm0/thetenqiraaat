@@ -1,0 +1,402 @@
+[
+  {
+    "surah": 1,
+    "ayah": 4,
+    "qiraa": "hafs",
+    "hafs_word": "مَـٰلِكِ",
+    "variant_text": "مَالِكِ",
+    "note": "بإثبات الألف (قرأ بها عاصم والكسائي ويعقوب وخلف العاشر)",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 4,
+    "qiraa": "kisai",
+    "hafs_word": "مَـٰلِكِ",
+    "variant_text": "مَالِكِ",
+    "note": "بإثبات الألف",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 4,
+    "qiraa": "harith",
+    "hafs_word": "مَـٰلِكِ",
+    "variant_text": "مَالِكِ",
+    "note": "قرأ الكسائي (أبو الحارث والدوري) «مَالِكِ» بألف كحفص",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 4,
+    "qiraa": "douri_kisai",
+    "hafs_word": "مَـٰلِكِ",
+    "variant_text": "مَالِكِ",
+    "note": "قرأ الكسائي (الدوري وأبو الحارث) «مَالِكِ» بألف كحفص",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 4,
+    "qiraa": "ruways",
+    "hafs_word": "مَـٰلِكِ",
+    "variant_text": "مَالِكِ",
+    "note": "قرأ يعقوب (رويس وروح) «مَالِكِ» بألف",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 4,
+    "qiraa": "rawh",
+    "hafs_word": "مَـٰلِكِ",
+    "variant_text": "مَالِكِ",
+    "note": "قرأ يعقوب (رويس وروح) «مَالِكِ» بألف",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 4,
+    "qiraa": "ishaq",
+    "hafs_word": "مَـٰلِكِ",
+    "variant_text": "مَالِكِ",
+    "note": "قرأ خلف العاشر (إسحاق وإدريس) «مَالِكِ» بألف",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 4,
+    "qiraa": "idris",
+    "hafs_word": "مَـٰلِكِ",
+    "variant_text": "مَالِكِ",
+    "note": "قرأ خلف العاشر (إسحاق وإدريس) «مَالِكِ» بألف",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 4,
+    "qiraa": "hisham",
+    "hafs_word": "مَـٰلِكِ",
+    "variant_text": "مَلِكِ",
+    "note": "قرأ ابن عامر (هشام وابن ذكوان) «مَلِكِ» بحذف الألف",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 4,
+    "qiraa": "ibn_dhakwan",
+    "hafs_word": "مَـٰلِكِ",
+    "variant_text": "مَلِكِ",
+    "note": "قرأ ابن عامر (هشام وابن ذكوان) «مَلِكِ» بحذف الألف",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 4,
+    "qiraa": "khalaf_hamzah",
+    "hafs_word": "مَـٰلِكِ",
+    "variant_text": "مَلِكِ",
+    "note": "قرأ حمزة (خلف وخلاد) «مَلِكِ» بحذف الألف",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 4,
+    "qiraa": "khallad",
+    "hafs_word": "مَـٰلِكِ",
+    "variant_text": "مَلِكِ",
+    "note": "قرأ حمزة (خلف وخلاد) «مَلِكِ» بحذف الألف",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 4,
+    "qiraa": "wardan",
+    "hafs_word": "مَـٰلِكِ",
+    "variant_text": "مَلِكِ",
+    "note": "قرأ أبو جعفر (ابن وردان وابن جماز) «مَلِكِ» بحذف الألف",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 4,
+    "qiraa": "ibn_jammaz",
+    "hafs_word": "مَـٰلِكِ",
+    "variant_text": "مَلِكِ",
+    "note": "قرأ أبو جعفر (ابن وردان وابن جماز) «مَلِكِ» بحذف الألف",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 6,
+    "qiraa": "khalaf_hamzah",
+    "hafs_word": "ٱلصِّرَٰطَ",
+    "variant_text": "الزِّرَاطَ (بإشمام الصاد زاياً)",
+    "note": "قرأ خلف عن حمزة بإشمام الصاد صوت الزاي في «الصراط» و«صراط»",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 6,
+    "qiraa": "khallad",
+    "hafs_word": "ٱلصِّرَٰطَ",
+    "variant_text": "الزِّرَاطَ (إشمام الصاد زاياً في الموضع الأول أو الخلف)",
+    "note": "قرأ خلاد بإشمام الصاد زاياً في «اهدنا الصراط» (وله الخلف في الموضع الثاني)",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 6,
+    "qiraa": "ruways",
+    "hafs_word": "ٱلصِّرَٰطَ",
+    "variant_text": "السِّرَاطَ",
+    "note": "قرأ رويس عن يعقوب بالسين الخالصة «السراط»",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 7,
+    "qiraa": "khalaf_hamzah",
+    "hafs_word": "عَلَيْهِمْ",
+    "variant_text": "عَلَيْهُمْ",
+    "note": "قرأ حمزة (خلف وخلاد) بضم الهاء في «عليهم، إليهم، لديهم» وصلاً ووقفاً",
+    "rule_type": "usul",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 7,
+    "qiraa": "khallad",
+    "hafs_word": "عَلَيْهِمْ",
+    "variant_text": "عَلَيْهُمْ",
+    "note": "قرأ حمزة (خلف وخلاد) بضم الهاء في «عليهم، إليهم، لديهم» وصلاً ووقفاً",
+    "rule_type": "usul",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 7,
+    "qiraa": "ruways",
+    "hafs_word": "عَلَيْهِمْ",
+    "variant_text": "عَلَيْهُمْ",
+    "note": "قرأ يعقوب (رويس وروح) بضم هاء الضمير بعد الياء الساكنة",
+    "rule_type": "usul",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 7,
+    "qiraa": "rawh",
+    "hafs_word": "عَلَيْهِمْ",
+    "variant_text": "عَلَيْهُمْ",
+    "note": "قرأ يعقوب (رويس وروح) بضم هاء الضمير بعد الياء الساكنة",
+    "rule_type": "usul",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 7,
+    "qiraa": "wardan",
+    "hafs_word": "عَلَيْهِمْ",
+    "variant_text": "عَلَيْهِمُو",
+    "note": "قرأ أبو جعفر بصلة ميم الجمع بواو لفظية وصلاً",
+    "rule_type": "usul",
+    "source": "curated"
+  },
+  {
+    "surah": 1,
+    "ayah": 7,
+    "qiraa": "ibn_jammaz",
+    "hafs_word": "عَلَيْهِمْ",
+    "variant_text": "عَلَيْهِمُو",
+    "note": "قرأ أبو جعفر بصلة ميم الجمع بواو لفظية وصلاً",
+    "rule_type": "usul",
+    "source": "curated"
+  },
+  {
+    "surah": 2,
+    "ayah": 9,
+    "qiraa": "hisham",
+    "hafs_word": "يُخَٰدِعُونَ",
+    "variant_text": "يُخَادِعُونَ",
+    "note": "وافق ابن عامر وحمزة والكسائي وعاصم ويعقوب وخلف حفصاً في الموضع الثاني «يُخادِعون»",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 2,
+    "ayah": 10,
+    "qiraa": "hisham",
+    "hafs_word": "يَكْذِبُونَ",
+    "variant_text": "يُكَذِّبُونَ",
+    "note": "قرأ غير الكوفيين (ومنهم ابن عامر وأبو جعفر ويعقوب) بضم الياء وفتح الكاف وتشديد الذال «يُكَذِّبون»",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 2,
+    "ayah": 10,
+    "qiraa": "ibn_dhakwan",
+    "hafs_word": "يَكْذِبُونَ",
+    "variant_text": "يُكَذِّبُونَ",
+    "note": "قرأ ابن عامر بضم الياء وفتح الكاف وتشديد الذال «يُكَذِّبون»",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 2,
+    "ayah": 10,
+    "qiraa": "wardan",
+    "hafs_word": "يَكْذِبُونَ",
+    "variant_text": "يُكَذِّبُونَ",
+    "note": "قرأ أبو جعفر «يُكَذِّبون» بتشديد الذال",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 2,
+    "ayah": 10,
+    "qiraa": "ibn_jammaz",
+    "hafs_word": "يَكْذِبُونَ",
+    "variant_text": "يُكَذِّبُونَ",
+    "note": "قرأ أبو جعفر «يُكَذِّبون» بتشديد الذال",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 2,
+    "ayah": 10,
+    "qiraa": "ruways",
+    "hafs_word": "يَكْذِبُونَ",
+    "variant_text": "يُكَذِّبُونَ",
+    "note": "قرأ يعقوب «يُكَذِّبون» بتشديد الذال",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 2,
+    "ayah": 10,
+    "qiraa": "rawh",
+    "hafs_word": "يَكْذِبُونَ",
+    "variant_text": "يُكَذِّبُونَ",
+    "note": "قرأ يعقوب «يُكَذِّبون» بتشديد الذال",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 2,
+    "ayah": 11,
+    "qiraa": "hisham",
+    "hafs_word": "قِيلَ",
+    "variant_text": "قِيلَ (بإشمام القاف الضم)",
+    "note": "قرأ هشام وابن ذكوان بخلاف عنه والكسائي ورويس بإشمام كسرة القاف ضماً",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 2,
+    "ayah": 11,
+    "qiraa": "harith",
+    "hafs_word": "قِيلَ",
+    "variant_text": "قِيلَ (بإشمام القاف الضم)",
+    "note": "قرأ الكسائي بإشمام كسرة القاف ضماً",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 2,
+    "ayah": 11,
+    "qiraa": "douri_kisai",
+    "hafs_word": "قِيلَ",
+    "variant_text": "قِيلَ (بإشمام القاف الضم)",
+    "note": "قرأ الكسائي بإشمام كسرة القاف ضماً",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 2,
+    "ayah": 11,
+    "qiraa": "ruways",
+    "hafs_word": "قِيلَ",
+    "variant_text": "قِيلَ (بإشمام القاف الضم)",
+    "note": "قرأ رويس عن يعقوب بإشمام كسرة القاف ضماً",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 106,
+    "ayah": 1,
+    "qiraa": "wardan",
+    "hafs_word": "لِإِيلَٰفِ",
+    "variant_text": "لِإِلَافِ",
+    "note": "قرأ أبو جعفر «لإلاف» بحذف الياء بعد الهمزة المكسورة",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 106,
+    "ayah": 1,
+    "qiraa": "ibn_jammaz",
+    "hafs_word": "لِإِيلَٰفِ",
+    "variant_text": "لِإِلَافِ",
+    "note": "قرأ أبو جعفر «لإلاف» بحذف الياء بعد الهمزة المكسورة",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 111,
+    "ayah": 4,
+    "qiraa": "hisham",
+    "hafs_word": "حَمَّالَةَ",
+    "variant_text": "حَمَّالَةُ (بالرفع)",
+    "note": "قرأ عاصم «حمالةَ» بالنصب وقرأ الباقون (ومنهم ابن عامر وحمزة والكسائي وأبو جعفر ويعقوب وخلف) بالرفع",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 112,
+    "ayah": 4,
+    "qiraa": "khalaf_hamzah",
+    "hafs_word": "كُفُوًا",
+    "variant_text": "كُفْؤًا (بسكون الفاء والهمز)",
+    "note": "قرأ حمزة «كُفْؤًا» بسكون الفاء والهمز، وله وقفاً تسهيل الهمزة أو إبدالها واواً",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 112,
+    "ayah": 4,
+    "qiraa": "khallad",
+    "hafs_word": "كُفُوًا",
+    "variant_text": "كُفْؤًا (بسكون الفاء والهمز)",
+    "note": "قرأ حمزة «كُفْؤًا» بسكون الفاء والهمز",
+    "rule_type": "farsh",
+    "source": "curated"
+  },
+  {
+    "surah": 112,
+    "ayah": 4,
+    "qiraa": "wardan",
+    "hafs_word": "كُفُوًا",
+    "variant_text": "كُفُوًا",
+    "note": "قرأ أبو جعفر بضم الفاء والواو كحفص",
+    "rule_type": "farsh",
+    "source": "curated"
+  }
+]
