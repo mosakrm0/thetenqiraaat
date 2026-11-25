@@ -1,4 +1,5 @@
 [![CI](https://github.com/mosakrm0/thetenqiraaat/actions/workflows/action.yaml/badge.svg)](https://github.com/mosakrm0/thetenqiraaat/actions/workflows/action.yaml)
+Live Demo: https://thetenqiraaat.web.app/
 
 # Thetenqiraaat - القراءات العشر والترجمات القرآنية
 
