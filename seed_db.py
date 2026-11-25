@@ -19,7 +19,7 @@ from urllib3.util.retry import Retry
 sys.path.insert(0, str(Path(__file__).parent))
 from config import DB_PATH, KFGQPC_JSON_URLS, QIRAAT  # noqa: E402
 from db import init_db, seed_count_notes_from_file, seed_variants_from_file  # noqa: E402
-from services.qiraat import sync_ayah_map_from_github  # noqa: E402
+from services.qiraat import sync_ayah_map_from_github, sync_qiraat_notes_from_github  # noqa: E402
 
 REQUEST_TIMEOUT = 15
 REQUEST_RETRIES = 2
@@ -135,6 +135,9 @@ def seed(start_surah=1, end_surah=114, pause=0.1, qiraa_filter: set[str] | None 
             for q in QIRAAT:
                 if qiraa_filter and q['key'] not in qiraa_filter:
                     continue
+                if q.get('fallback') and not qiraa_filter:
+                    logger.info('Skipping %s (uses Hafs baseline + variants)', q['key'])
+                    continue
                 logger.info('Fetching %s (textId=%s, fallback=%s) ...', q['key'], q['textId'], q['fallback'])
                 for surah in range(start_surah, end_surah + 1):
                     c.execute('SELECT COUNT(*) FROM ayahs WHERE surah = ? AND qiraa = ?', (surah, q['key']))
@@ -177,6 +180,8 @@ def parse_args():
     parser.add_argument('--qiraat',      type=str, default='', help='Comma-separated qiraa keys to seed')
     parser.add_argument('--seed-variants', action='store_true', help='Re-import local variants & count notes JSONs')
     parser.add_argument('--sync-ayah-map', action='store_true', help='Sync quranpedia/qiraat-ayah-map from GitHub')
+    parser.add_argument('--sync-qiraat-notes', action='store_true', help='Sync 604-page Ten-Qiraat Farsh/Usul notes from GitHub')
+    parser.add_argument('--skip-ayahs', action='store_true', help='Skip ayah text seeding')
     return parser.parse_args()
 
 
@@ -195,10 +200,16 @@ if __name__ == '__main__':
             added = sync_ayah_map_from_github(conn)
             logger.info('Synced qiraat-ayah-map (+%s rows).', added)
 
-    start = max(1, min(114, args.start_surah))
-    end = max(1, min(114, args.end_surah))
-    if start > end:
-        start, end = end, start
+    if args.sync_qiraat_notes:
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            added = sync_qiraat_notes_from_github(conn)
+            logger.info('Synced 604-page qiraat-notes (+%s rows).', added)
 
-    q_filter = {x.strip() for x in args.qiraat.split(',') if x.strip()} or None
-    seed(start_surah=start, end_surah=end, pause=max(0.0, args.pause), qiraa_filter=q_filter)
+    if not args.skip_ayahs:
+        start = max(1, min(114, args.start_surah))
+        end = max(1, min(114, args.end_surah))
+        if start > end:
+            start, end = end, start
+
+        q_filter = {x.strip() for x in args.qiraat.split(',') if x.strip()} or None
+        seed(start_surah=start, end_surah=end, pause=max(0.0, args.pause), qiraa_filter=q_filter)

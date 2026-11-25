@@ -56,11 +56,16 @@
       <button class="qbar-toggle v-btn" type="button" id="qbar-toggle" onclick="toggleQiraatBar()" aria-expanded="true">إخفاء الأدوات</button>
       <div class="q-controls-row">
         <div class="tr-filter-wrap">
-          <input type="text" id="tr-search" class="tr-search-input" placeholder="ابحث عن لغة أو مترجم..." oninput="filterCatalog(this.value)" aria-label="ابحث عن لغة أو مترجم">
+          <select id="tr-lang-filter" class="tr-lang-select" onchange="filterByLang(this.value)" aria-label="تصفية حسب اللغة">
+            <option value="">جميع اللغات</option>
+          </select>
+          <input type="text" id="tr-search" class="tr-search-input" placeholder="ابحث بالعربية أو الإنجليزية عن لغة أو مترجم..." oninput="filterCatalog(this.value)" onfocus="openPicker(true)" aria-label="ابحث عن لغة أو مترجم">
+          <button type="button" class="v-btn" id="tr-clear-search" onclick="clearCatalogSearch()" title="مسح البحث" style="display:none">مسح</button>
           <label class="opt-toggle">
             <input type="checkbox" id="tr-audio-only" onchange="toggleAudioOnly(this.checked)">
             <span>مع صوت فقط</span>
           </label>
+          <button type="button" class="v-btn" id="tr-picker-toggle" onclick="togglePicker()" aria-expanded="false">إظهار القائمة</button>
         </div>
         <div class="range-wrap">
           <label for="r-start">من</label>
@@ -81,8 +86,17 @@
           </select>
         </div>
       </div>
-      <div class="tr-chips-wrap" id="tr-chips">
-        <span class="tr-more-hint">جاري تحميل قائمة الترجمات...</span>
+
+      <div class="tr-selected-bar" id="tr-selected-bar" aria-label="الترجمات المختارة"></div>
+
+      <div class="tr-picker-panel v-window" id="tr-picker-panel" style="display:none">
+        <div class="v-titlebar">
+          <span id="tr-picker-title">قائمة الترجمات المتاحة</span>
+          <button type="button" class="v-btn" onclick="openPicker(false)">إغلاق</button>
+        </div>
+        <div class="tr-listbox" id="tr-chips" role="listbox" aria-label="قائمة الترجمات">
+          <div class="tr-more-hint" style="padding:12px">جاري تحميل قائمة الترجمات...</div>
+        </div>
       </div>
     </section>
 

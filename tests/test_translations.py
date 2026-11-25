@@ -57,6 +57,29 @@ class TestTranslationsService(unittest.TestCase):
         self.assertIn('alquran:en.sahih', data)
         self.assertIn('alquran:en.pickthall', data)
 
+    def test_fawaz_filters_la_lad_and_deduplicates_authors(self):
+        self.cache.set('everyayah_recitations', {'ayahCount': [7]}, expire=3600)
+        self.cache.set('alquran_translations', [
+            {'key': 'alquran:en.sahih', 'source': 'alquran', 'edition': 'en.sahih', 'name': 'Sahih International', 'englishName': 'Sahih International', 'language': 'en', 'direction': 'ltr', 'mode': 'ayah-text'},
+        ], expire=3600)
+        fawaz_payload = {
+            'aze-alikhanmusayev':     {'name': 'aze-alikhanmusayev',     'author': 'Alikhan Musayev', 'language': 'Azerbaijani', 'direction': 'ltr'},
+            'aze-alikhanmusayev-la':  {'name': 'aze-alikhanmusayev-la',  'author': 'Alikhan Musayev', 'language': 'Azerbaijani', 'direction': 'ltr'},
+            'aze-alikhanmusayev-lad': {'name': 'aze-alikhanmusayev-lad', 'author': 'Alikhan Musayev', 'language': 'Azerbaijani', 'direction': 'ltr'},
+            'eng-sahih':              {'name': 'eng-ummmuhammad',        'author': 'Sahih International', 'language': 'English', 'direction': 'ltr'},
+        }
+        with patch('services.translations.get_http_session') as mock_sess:
+            mock_sess.return_value.get.return_value.json.return_value = fawaz_payload
+            items = tr_svc.unified_translations_catalog()
+
+        keys = [x['key'] for x in items]
+        self.assertNotIn('fawaz:aze-alikhanmusayev-la', keys)
+        self.assertNotIn('fawaz:aze-alikhanmusayev-lad', keys)
+        self.assertNotIn('fawaz:eng-ummmuhammad', keys)
+        self.assertIn('fawaz:aze-alikhanmusayev', keys)
+        # English should appear before Azerbaijani in catalog order
+        self.assertLess(keys.index('alquran:en.sahih'), keys.index('fawaz:aze-alikhanmusayev'))
+
 
 if __name__ == '__main__':
     unittest.main()

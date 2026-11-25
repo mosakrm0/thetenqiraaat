@@ -1,5 +1,6 @@
 import concurrent.futures
 import logging
+import re
 
 import requests
 
@@ -171,7 +172,7 @@ def alquran_translation_editions() -> list[dict]:
 
 def fawaz_translation_editions() -> list[dict]:
     cache = get_cache()
-    cached = cache.get('fawaz_editions')
+    cached = cache.get('fawaz_editions_v2')
     if isinstance(cached, list):
         return cached
 
@@ -189,23 +190,25 @@ def fawaz_translation_editions() -> list[dict]:
         name = row.get('name')
         if not isinstance(name, str) or not name:
             continue
-        if name.startswith('ara-'):
+        # Skip Arabic recitation datasets and duplicate -la / -lad transliteration variants
+        if name.startswith('ara-') or name.endswith('-la') or name.endswith('-lad'):
             continue
 
         language = normalize_lang_code(row.get('language') or '')
+        display_name = str(row.get('author') or '').strip() or name
         items.append({
             'key':         f'fawaz:{name}',
             'source':      'fawaz',
             'edition':     name,
-            'name':        row.get('author') or name,
+            'name':        display_name,
             'englishName': name,
             'language':    language,
             'direction':   row.get('direction') or 'ltr',
             'mode':        'ayah-text',
         })
 
-    items.sort(key=lambda x: (str(x.get('language') or ''), str(x.get('englishName') or '').lower()))
-    cache.set('fawaz_editions', items, expire=TRANSLATIONS_CACHE_TTL_SEC)
+    items.sort(key=lambda x: (str(x.get('language') or ''), str(x.get('name') or '').lower()))
+    cache.set('fawaz_editions_v2', items, expire=TRANSLATIONS_CACHE_TTL_SEC)
     return items
 
 
@@ -322,13 +325,34 @@ def unified_translations_catalog() -> list[dict]:
         except Exception as exc:
             logger.warning('fawaz translation catalog failed: %s', exc)
 
+    _LANG_PRIORITY = {
+        'ar': 0, 'en': 1, 'ur': 2, 'fa': 3, 'tr': 4, 'fr': 5, 'id': 6,
+        'de': 7, 'es': 8, 'ru': 9, 'bn': 10, 'ms': 11, 'bs': 12, 'az': 13,
+        'hi': 14, 'zh': 15, 'it': 16, 'pt': 17, 'nl': 18, 'sq': 19, 'sw': 20, 'ha': 21,
+    }
+    _POPULAR_EDITIONS = {
+        'en.sahih': 0, 'en.pickthall': 1, 'en.yusufali': 2, 'en.asad': 3,
+        'ur.jalandhry': 0, 'fa.fooladvand': 0, 'fa.makarem': 1,
+        'fr.hamidullah': 0, 'tr.diyanet': 0, 'id.indonesian': 0,
+    }
+
+    def _norm_author(val: str) -> str:
+        s = re.sub(r'[^a-z0-9\u0600-\u06FF]+', '', str(val or '').lower())
+        return s
+
     seen_keys = {'hafs_ar_text'}
+    seen_authors: set[tuple[str, str]] = set()
     for row in all_editions:
         key = row.get('key')
         if not key or key in seen_keys:
             continue
-        seen_keys.add(key)
         lang = normalize_lang_code(row.get('language') or '')
+        author_sig = _norm_author(row.get('name') or row.get('englishName') or key)
+        if lang and author_sig and (lang, author_sig) in seen_authors:
+            continue
+        seen_keys.add(key)
+        if lang and author_sig:
+            seen_authors.add((lang, author_sig))
         track = everyayah_by_lang.get(lang)
         catalog.append({
             **row,
@@ -337,10 +361,15 @@ def unified_translations_catalog() -> list[dict]:
             'has_audio':       bool(track),
         })
 
-    # Put audio-backed items first, then sort by language and name
     catalog[1:] = sorted(
         catalog[1:],
-        key=lambda x: (0 if x.get('has_audio') else 1, str(x.get('language') or 'zzz'), str(x.get('englishName') or '').lower()),
+        key=lambda x: (
+            _LANG_PRIORITY.get(str(x.get('language') or ''), 999),
+            str(x.get('language') or 'zzz'),
+            _POPULAR_EDITIONS.get(str(x.get('edition') or ''), 50),
+            0 if x.get('has_audio') else 1,
+            str(x.get('name') or x.get('englishName') or '').lower(),
+        ),
     )
     return catalog
 

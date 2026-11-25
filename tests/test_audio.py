@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import diskcache
 
+from config import QIRAAT
 from services import audio as audio_svc
 
 
@@ -59,8 +60,10 @@ class TestAudioService(unittest.TestCase):
 
     def test_resolve_surah_audio_falls_back_to_mp3quran_timed(self):
         self.cache.set('everyayah_recitations', {'ayahCount': [7]}, expire=3600)
+        self.cache.set('quranpedia_reciters_flat_v1', [], expire=3600)
         self.cache.set('qdc_chapter_reciters_en', [], expire=3600)
         self.cache.set('mp3quran_riwayat_ar', [{'id': 9, 'name': 'قالون عن نافع'}], expire=3600)
+        self.cache.set('mp3quran_timing_read_ids', [999], expire=3600)
         self.cache.set('mp3quran_reciters_9', [
             {
                 'id': 50,
@@ -70,12 +73,24 @@ class TestAudioService(unittest.TestCase):
         ], expire=3600)
         self.cache.set('mp3quran_timing_999_1', {1: {'start_ms': 0, 'end_ms': 3500}}, expire=3600)
 
-        res = audio_svc.resolve_surah_audio('qaloon', 1)
+        with patch('services.audio.quranpedia_reciters_for_qiraa', return_value=[]):
+            res = audio_svc.resolve_surah_audio('qaloon', 1)
         self.assertTrue(res['available'])
         self.assertEqual(res['mode'], 'timed-surah')
         self.assertEqual(res['source'], 'mp3quran_timed')
         self.assertTrue(res['surah_url'].startswith('https://'))
         self.assertIn(1, res['timings'])
+
+    def test_all_20_riwayat_have_ayah_by_ayah_audio_even_offline(self):
+        self.cache.set('everyayah_recitations', {'ayahCount': [7]}, expire=3600)
+        with patch('services.audio.get_http_session') as mock_sess:
+            mock_sess.return_value.get.side_effect = RuntimeError('offline')
+            for q in QIRAAT:
+                res = audio_svc.resolve_surah_audio(q['key'], 1)
+                self.assertTrue(res['available'], f"{q['key']} should be available")
+                self.assertEqual(res['mode'], 'ayah', f"{q['key']} should have mode='ayah'")
+                self.assertEqual(len(res['ayah_map']), 7, f"{q['key']} should have 7 ayahs for Fatiha")
+                self.assertTrue(res['ayah_map'][1].startswith('https://files.quranpedia.net/recitations/'))
 
 
 if __name__ == '__main__':

@@ -1,10 +1,12 @@
 import concurrent.futures
+import json
 import logging
 import re
 import threading
 import time
 
 from config import (
+    DATA_DIR,
     EVERYAYAH_CACHE_TTL_SEC,
     EVERYAYAH_RECITATIONS_URL,
     MP3QURAN_API_BASE,
@@ -24,6 +26,8 @@ from config import (
     QF_SCOPE,
     QF_TOKEN_BUFFER_SEC,
     QIRAAT_BY_KEY,
+    QURANPEDIA_API_BASE,
+    QURANPEDIA_CACHE_TTL_SEC,
     QURAN_COM_V4_API_BASE,
     REQUEST_TIMEOUT,
 )
@@ -33,6 +37,18 @@ logger = logging.getLogger(__name__)
 
 _qf_token_lock = threading.Lock()
 _qf_token = {'value': None, 'exp': 0.0}
+_SURAH_AYAH_COUNTS: dict[int, int] | None = None
+
+
+def get_surah_ayah_count(surah_id: int) -> int:
+    global _SURAH_AYAH_COUNTS
+    if _SURAH_AYAH_COUNTS is None:
+        try:
+            items = json.loads((DATA_DIR / 'surahs.json').read_text(encoding='utf-8'))
+            _SURAH_AYAH_COUNTS = {int(s['number']): int(s['numberOfAyahs']) for s in items}
+        except Exception:
+            _SURAH_AYAH_COUNTS = {}
+    return _SURAH_AYAH_COUNTS.get(int(surah_id), 0)
 
 
 def _normalize_ar(text: str) -> str:
@@ -305,6 +321,101 @@ def qf_public_get_chapter_audio_map(surah_number: int, qf_public_id: int) -> dic
     return ayah_map
 
 
+# ── Quranpedia ayah-by-ayah reciters (covers all 20 canonical riwayat) ────────
+def quranpedia_get_recitations_flat() -> list[dict]:
+    cache = get_cache()
+    cached = cache.get('quranpedia_reciters_flat_v1')
+    if isinstance(cached, list):
+        return cached
+
+    try:
+        session = get_http_session()
+        resp = session.get(f'{QURANPEDIA_API_BASE}/reciters', timeout=REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception as exc:
+        logger.warning('Quranpedia reciters fetch failed: %s', exc)
+        return []
+
+    flat: list[dict] = []
+    if isinstance(payload, list):
+        for r in payload:
+            if isinstance(r, list):
+                flat.extend(x for x in r if isinstance(x, dict))
+            elif isinstance(r, dict):
+                if isinstance(r.get('recitations'), list):
+                    flat.extend(x for x in r['recitations'] if isinstance(x, dict))
+                else:
+                    flat.append(r)
+
+    if flat:
+        cache.set('quranpedia_reciters_flat_v1', flat, expire=QURANPEDIA_CACHE_TTL_SEC)
+    return flat
+
+
+def quranpedia_reciters_for_qiraa(qiraa_key: str, surah_id: int) -> list[dict]:
+    """
+    Return per-ayah MP3 reciters from Quranpedia for `qiraa_key`.
+    Falls back to static verified Quranpedia defaults if API is unreachable.
+    """
+    meta = QIRAAT_BY_KEY.get(qiraa_key)
+    if not meta:
+        return []
+    rawi_id = meta.get('quranpediaRawiId')
+    results: list[dict] = []
+    seen_ids: set[str] = set()
+
+    if rawi_id:
+        for item in quranpedia_get_recitations_flat():
+            rawi = item.get('rawi') or {}
+            cls = item.get('classification') or {}
+            if rawi.get('id') != rawi_id or cls.get('id') != 2:
+                continue
+            surahs_list = item.get('surahs_list')
+            if isinstance(surahs_list, list) and surahs_list and surah_id not in surahs_list:
+                continue
+            server = _normalize_server_url(item.get('server') or '')
+            rec_id = item.get('id')
+            if not (server and rec_id):
+                continue
+            full_id = f'quranpedia:{rec_id}'
+            if full_id in seen_ids:
+                continue
+            seen_ids.add(full_id)
+            results.append({
+                'id':         full_id,
+                'qp_id':      int(rec_id),
+                'name':       str(item.get('name') or f'Quranpedia #{rec_id}').strip(),
+                'server':     server,
+                'source':     'quranpedia',
+                'mode_hint':  'ayah',
+            })
+
+    # Always include static verified fallback if API didn't return anything
+    if not results:
+        for rec_id, name, server in meta.get('quranpediaDefaultReciters') or []:
+            full_id = f'quranpedia:{rec_id}'
+            if full_id in seen_ids:
+                continue
+            seen_ids.add(full_id)
+            results.append({
+                'id':         full_id,
+                'qp_id':      int(rec_id),
+                'name':       name,
+                'server':     _normalize_server_url(server),
+                'source':     'quranpedia',
+                'mode_hint':  'ayah',
+            })
+
+    return results
+
+
+def _build_quranpedia_ayah_map(server: str, surah_id: int) -> dict[int, str]:
+    count = get_surah_ayah_count(surah_id) or everyayah_ayah_count_for_surah(surah_id) or 286
+    base = server.rstrip('/')
+    return {i: f'{base}/{surah_id:03d}{i:03d}.mp3' for i in range(1, count + 1)}
+
+
 # ── EveryAyah dynamic reciter discovery ───────────────────────────────────────
 def everyayah_get_recitations_payload() -> dict:
     cache = get_cache()
@@ -324,14 +435,17 @@ def everyayah_get_recitations_payload() -> dict:
 
 
 def everyayah_ayah_count_for_surah(surah_id: int) -> int:
-    payload = everyayah_get_recitations_payload()
-    arr = payload.get('ayahCount')
-    if not isinstance(arr, list) or not (1 <= surah_id <= len(arr)):
-        return 0
+    local_count = get_surah_ayah_count(surah_id)
+    if local_count > 0:
+        return local_count
     try:
-        return int(arr[surah_id - 1])
+        payload = everyayah_get_recitations_payload()
+        arr = payload.get('ayahCount')
+        if isinstance(arr, list) and (1 <= surah_id <= len(arr)):
+            return int(arr[surah_id - 1])
     except Exception:
-        return 0
+        pass
+    return 0
 
 
 def everyayah_build_ayah_url(subfolder: str, surah_id: int, ayah_id: int) -> str:
@@ -340,9 +454,6 @@ def everyayah_build_ayah_url(subfolder: str, surah_id: int, ayah_id: int) -> str
 
 
 def everyayah_reciters_for_qiraa(qiraa_key: str) -> list[dict]:
-    """
-    Discover non-translation EveryAyah reciters matching `qiraa_key`.
-    """
     meta = QIRAAT_BY_KEY.get(qiraa_key)
     if not meta:
         return []
@@ -366,13 +477,11 @@ def everyayah_reciters_for_qiraa(qiraa_key: str) -> list[dict]:
             continue
         low_sub = subfolder.lower()
         low_name = name.lower()
-        # Exclude translation tracks
         if low_sub.startswith('translations/') or low_sub.startswith('english/') or low_sub.startswith('multilanguage/'):
             continue
         if 'translation' in low_name or 'translated' in low_name:
             continue
 
-        # Avoid matching Hafs reciters for non-Hafs qiraat
         if qiraa_key != 'hafs' and not any(h in low_sub or h in low_name for h in hints):
             continue
         if qiraa_key == 'hafs':
@@ -382,15 +491,14 @@ def everyayah_reciters_for_qiraa(qiraa_key: str) -> list[dict]:
                 continue
 
         results.append({
-            'id':           f'everyayah:{key}',
-            'track_id':     int(key),
-            'name':         name or subfolder,
-            'subfolder':    subfolder,
-            'source':       'everyayah',
-            'mode_hint':    'ayah',
+            'id':        f'everyayah:{key}',
+            'track_id':  int(key),
+            'name':      name or subfolder,
+            'subfolder': subfolder,
+            'source':    'everyayah',
+            'mode_hint': 'ayah',
         })
 
-    # Prefer higher bitrate / Alafasy for Hafs, Abdul Basit for Warsh
     def _sort_key(item: dict):
         sub = item['subfolder'].lower()
         score = 0
@@ -426,11 +534,25 @@ def mp3quran_get_riwayat() -> list[dict]:
         return []
 
 
+def mp3quran_get_timing_read_ids() -> set[int]:
+    cache = get_cache()
+    cached = cache.get('mp3quran_timing_read_ids')
+    if isinstance(cached, list):
+        return set(cached)
+    try:
+        session = get_http_session()
+        resp = session.get(f'{MP3QURAN_API_BASE}/ayat_timing/reads', timeout=REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        payload = resp.json()
+        ids = [int(x['id']) for x in payload if isinstance(x, dict) and str(x.get('id', '')).isdigit()] if isinstance(payload, list) else []
+        if ids:
+            cache.set('mp3quran_timing_read_ids', ids, expire=MP3QURAN_CACHE_TTL_SEC)
+        return set(ids)
+    except Exception:
+        return set()
+
+
 def mp3quran_resolve_rewaya_id(qiraa_key: str) -> int | None:
-    """
-    Dynamically match a canonical qiraa_key to MP3Quran v3's riwayat list.
-    Ensures distinct riwayat (e.g. warsh vs qaloon, shouba vs ruways) never collide.
-    """
     meta = QIRAAT_BY_KEY.get(qiraa_key)
     if not meta:
         return None
@@ -455,7 +577,6 @@ def mp3quran_resolve_rewaya_id(qiraa_key: str) -> int | None:
             if r_name == hint:
                 score = max(score, 1000 - idx)
             elif hint in r_name:
-                # Longer, more specific hint (e.g. "شعبة عن عاصم") scores higher than single word
                 score = max(score, 100 + len(hint) - idx)
         if score > best_score:
             best_score = score
@@ -512,11 +633,14 @@ def mp3quran_get_reciters_for_qiraa(qiraa_key: str, surah_id: int) -> list[dict]
             logger.warning('MP3Quran reciters fetch failed (rewaya %s): %s', rewaya_id, exc)
             return []
 
+    timing_reads = mp3quran_get_timing_read_ids()
     items: list[dict] = []
     for rec in reciters:
         if not isinstance(rec, dict):
             continue
         rec_name = str(rec.get('name') or '').strip()
+        rec_id = rec.get('id')
+        has_timing = bool(rec_id and int(rec_id) in timing_reads)
         for m in rec.get('moshaf') or []:
             if not isinstance(m, dict) or not m.get('server'):
                 continue
@@ -534,22 +658,19 @@ def mp3quran_get_reciters_for_qiraa(qiraa_key: str, surah_id: int) -> list[dict]
             items.append({
                 'id':          f'mp3quran:{moshaf_id}',
                 'moshaf_id':   int(moshaf_id),
+                'has_timing':  has_timing or (int(moshaf_id) in timing_reads),
                 'name':        label or f'MP3Quran #{moshaf_id}',
                 'surah_url':   surah_url,
                 'surah_total': surah_total,
                 'source':      'mp3quran',
-                'mode_hint':   'surah',
+                'mode_hint':   'timed-surah' if has_timing else 'surah',
             })
 
-    items.sort(key=lambda x: (-x['surah_total'], x['name']))
+    items.sort(key=lambda x: (0 if x['has_timing'] else 1, -x['surah_total'], x['name']))
     return items
 
 
 def mp3quran_get_ayat_timing(moshaf_id: int, surah_id: int) -> dict[int, dict[str, int]]:
-    """
-    Fetch verse-level timestamps for a MP3Quran moshaf+surah.
-    Returns {ayah_num: {"start_ms": int, "end_ms": int}}, or {} if unavailable.
-    """
     cache = get_cache()
     cache_key = f'mp3quran_timing_{moshaf_id}_{surah_id}'
     cached = cache.get(cache_key)
@@ -681,6 +802,14 @@ def list_reciters_for_qiraa(qiraa_key: str, surah_id: int) -> list[dict]:
         return []
     reciters: list[dict] = []
 
+    for qp in quranpedia_reciters_for_qiraa(qiraa_key, surah_id):
+        reciters.append({
+            'id':        qp['id'],
+            'name':      qp['name'],
+            'source':    'quranpedia',
+            'mode_hint': 'ayah',
+        })
+
     for ea in everyayah_reciters_for_qiraa(qiraa_key):
         reciters.append({
             'id':        ea['id'],
@@ -706,23 +835,36 @@ def list_reciters_for_qiraa(qiraa_key: str, surah_id: int) -> list[dict]:
             'mode_hint': 'timed-surah',
         })
 
-    for mp3 in mp3quran_get_reciters_for_qiraa(qiraa_key, surah_id)[:25]:
+    for mp3 in mp3quran_get_reciters_for_qiraa(qiraa_key, surah_id)[:20]:
         reciters.append({
             'id':        mp3['id'],
             'name':      mp3['name'],
             'source':    'mp3quran',
-            'mode_hint': 'surah',
+            'mode_hint': mp3['mode_hint'],
         })
 
     return reciters
 
 
 def _resolve_specific_reciter(qiraa_key: str, surah_id: int, reciter_id: str) -> dict | None:
+    if reciter_id.startswith('quranpedia:'):
+        target_id = reciter_id.split(':', 1)[1]
+        for qp in quranpedia_reciters_for_qiraa(qiraa_key, surah_id):
+            if str(qp['qp_id']) == target_id:
+                return {
+                    'available':    True,
+                    'mode':         'ayah',
+                    'source':       'quranpedia',
+                    'reciter_id':   qp['id'],
+                    'reciter_name': qp['name'],
+                    'ayah_map':     _build_quranpedia_ayah_map(qp['server'], surah_id),
+                }
+
     if reciter_id.startswith('everyayah:'):
         tid = reciter_id.split(':', 1)[1]
         for ea in everyayah_reciters_for_qiraa(qiraa_key):
             if str(ea['track_id']) == tid:
-                count = everyayah_ayah_count_for_surah(surah_id) or 286
+                count = get_surah_ayah_count(surah_id) or everyayah_ayah_count_for_surah(surah_id) or 286
                 return {
                     'available':    True,
                     'mode':         'ayah',
@@ -797,7 +939,7 @@ def _resolve_specific_reciter(qiraa_key: str, surah_id: int, reciter_id: str) ->
 def resolve_surah_audio(qiraa_key: str, surah_id: int, reciter_id: str | None = None) -> dict:
     """
     Unified 4-tier audio resolver:
-      Tier 1 (ayah):        EveryAyah per-ayah MP3 or QF public per-ayah CDN
+      Tier 1 (ayah):        EveryAyah (Hafs/Warsh) & Quranpedia per-ayah MP3s (all 20 riwayat!) + QF public CDN
       Tier 2 (timed-surah): MP3Quran v3 surah MP3 + ayat_timing timestamps
       Tier 3 (timed-surah): Quran.com / QDC chapter MP3 + verse timestamps
       Tier 4 (surah):       MP3Quran full-surah MP3 fallback
@@ -812,11 +954,37 @@ def resolve_surah_audio(qiraa_key: str, surah_id: int, reciter_id: str | None = 
 
     meta = QIRAAT_BY_KEY[qiraa_key]
 
-    # Tier 1a: EveryAyah per-ayah MP3
+    # Tier 1a: For Hafs, prefer EveryAyah Alafasy first; for all other 19 riwayat, prefer Quranpedia per-ayah
+    if qiraa_key == 'hafs':
+        ea_reciters = everyayah_reciters_for_qiraa(qiraa_key)
+        if ea_reciters:
+            ea = ea_reciters[0]
+            count = get_surah_ayah_count(surah_id) or everyayah_ayah_count_for_surah(surah_id) or 286
+            return {
+                'available':    True,
+                'mode':         'ayah',
+                'source':       'everyayah',
+                'reciter_id':   ea['id'],
+                'reciter_name': ea['name'],
+                'ayah_map':     {i: everyayah_build_ayah_url(ea['subfolder'], surah_id, i) for i in range(1, count + 1)},
+            }
+
+    qp_reciters = quranpedia_reciters_for_qiraa(qiraa_key, surah_id)
+    if qp_reciters:
+        qp = qp_reciters[0]
+        return {
+            'available':    True,
+            'mode':         'ayah',
+            'source':       'quranpedia',
+            'reciter_id':   qp['id'],
+            'reciter_name': qp['name'],
+            'ayah_map':     _build_quranpedia_ayah_map(qp['server'], surah_id),
+        }
+
     ea_reciters = everyayah_reciters_for_qiraa(qiraa_key)
     if ea_reciters:
         ea = ea_reciters[0]
-        count = everyayah_ayah_count_for_surah(surah_id) or 286
+        count = get_surah_ayah_count(surah_id) or everyayah_ayah_count_for_surah(surah_id) or 286
         return {
             'available':    True,
             'mode':         'ayah',
@@ -842,14 +1010,13 @@ def resolve_surah_audio(qiraa_key: str, surah_id: int, reciter_id: str | None = 
         except Exception as exc:
             logger.warning('QF public surah-map error %s %s: %s', qiraa_key, surah_id, exc)
 
-    # Tier 2: MP3Quran v3 surah + ayat_timing (check top 5 reciters concurrently)
+    # Tier 2: MP3Quran v3 surah + ayat_timing
     mp3_reciters = mp3quran_get_reciters_for_qiraa(qiraa_key, surah_id)
     if mp3_reciters:
         top_candidates = mp3_reciters[:5]
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
             futures = {ex.submit(mp3quran_get_ayat_timing, c['moshaf_id'], surah_id): c for c in top_candidates}
             for cand in top_candidates:
-                # Preserve priority order
                 fut = next(f for f, c in futures.items() if c is cand)
                 try:
                     timings = fut.result()

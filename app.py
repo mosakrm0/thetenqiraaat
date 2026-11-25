@@ -137,8 +137,17 @@ def get_surah(surah_id):
         c = conn.cursor()
         c.execute('SELECT DISTINCT qiraa FROM ayahs WHERE surah = ?', (surah_id,))
         existing_keys = {row['qiraa'] for row in c.fetchall()}
-        missing_keys = sorted(requested_set - existing_keys)
 
+        # Only fetch non-fallback riwayat (plus 'hafs' if any fallback riwaya is requested)
+        need_hafs_for_fallback = any(QIRAAT_BY_KEY[k].get('fallback') and k not in existing_keys for k in requested_set)
+        keys_to_ensure = {
+            k for k in requested_set
+            if not QIRAAT_BY_KEY[k].get('fallback')
+        }
+        if need_hafs_for_fallback:
+            keys_to_ensure.add('hafs')
+
+        missing_keys = sorted(keys_to_ensure - existing_keys)
         fetch_status = {key: {'fetch_status': 'cached', 'error': None} for key in (existing_keys & requested_set)}
         if missing_keys:
             fetch_status.update(fetch_external_and_store(surah_id, conn, missing_keys))
@@ -153,8 +162,11 @@ def get_surah(surah_id):
 
     data: dict[str, dict[int, str]] = {}
     for r in rows:
-        if r['qiraa'] in requested_set:
+        if r['qiraa'] in requested_set or r['qiraa'] == 'hafs':
             data.setdefault(r['qiraa'], {})[r['ayah']] = r['text']
+
+    hafs_ayahs = data.get('hafs', {})
+    hafs_status = fetch_status.get('hafs', {'fetch_status': 'cached' if hafs_ayahs else 'unavailable', 'error': None})
 
     max_ayah = max((max(m) for m in data.values() if m), default=0)
 
@@ -164,10 +176,15 @@ def get_surah(surah_id):
         if key not in requested_set:
             continue
         ayahs = data.get(key, {})
+        if not ayahs and q.get('fallback') and hafs_ayahs:
+            ayahs = hafs_ayahs
+            q_status = {'fetch_status': hafs_status['fetch_status'], 'error': hafs_status['error']}
+        else:
+            q_status = fetch_status.get(key, {'fetch_status': 'unavailable', 'error': None})
+            if not ayahs and q_status['fetch_status'] == 'cached':
+                q_status = {'fetch_status': 'unavailable', 'error': None}
+
         arr = [{'text': ayahs.get(i, '(النص غير متاح)')} for i in range(1, max_ayah + 1)]
-        q_status = fetch_status.get(key, {'fetch_status': 'unavailable', 'error': None})
-        if not ayahs and q_status['fetch_status'] == 'cached':
-            q_status = {'fetch_status': 'unavailable', 'error': None}
 
         q_variants = variants_map.get(key, {})
         q_count_notes = count_notes_map.get(key, {})

@@ -21,9 +21,14 @@ MP3QURAN_API_BASE = 'https://www.mp3quran.net/api/v3'
 MP3QURAN_CACHE_TTL_SEC = 60 * 60 * 24
 MP3QURAN_TIMING_EMPTY_TTL_SEC = 60 * 60 * 6
 
+QURANPEDIA_API_BASE = 'https://api.quranpedia.net/v1'
+QURANPEDIA_CACHE_TTL_SEC = 60 * 60 * 24
+
 QIRAAT10_API_BASE = os.getenv('QIRAAT10_API_BASE', 'https://qiraat10.com/api/v1').strip().rstrip('/')
+QIRAAT_NOTES_URL = 'https://raw.githubusercontent.com/QZTA/qiraat-api/main/data/qiraat-notes.json'
+QURAN_DATA_PAGES_URL = 'https://raw.githubusercontent.com/QZTA/qiraat-api/main/data/quran-data.json'
 QIRAAT_AYAH_MAP_URL = (
-    'https://raw.githubusercontent.com/quranpedia/qiraat-ayah-map/main/book-boundary-primitives.json'
+    'https://raw.githubusercontent.com/quranpedia/qiraat-ayah-map/main/data/book-boundary-primitives.json'
 )
 
 KFGQPC_JSON_URLS = {
@@ -307,6 +312,34 @@ QIRAAT = [
     },
 ]
 
+QURANPEDIA_RAWI_MAP = {
+    'qaloon':        {'rawi_id': 1,  'defaults': [(257, 'محمود خليل الحصري (قالون)', 'https://files.quranpedia.net/recitations/257/')]},
+    'warsh':         {'rawi_id': 2,  'defaults': [(262, 'عبد الباسط عبد الصمد (ورش)', 'https://files.quranpedia.net/recitations/262/')]},
+    'bazzi':         {'rawi_id': 3,  'defaults': [(268, 'محمد عبد الحكيم (البزي)', 'https://files.quranpedia.net/recitations/268/')]},
+    'qumbul':        {'rawi_id': 4,  'defaults': [(269, 'محمد عبد الحكيم (قنبل)', 'https://files.quranpedia.net/recitations/269/')]},
+    'douri':         {'rawi_id': 5,  'defaults': [(270, 'محمود خليل الحصري (الدوري عن أبي عمرو)', 'https://files.quranpedia.net/recitations/270/')]},
+    'susi':          {'rawi_id': 6,  'defaults': [(272, 'عبد الرشيد صوفي (السوسي)', 'https://files.quranpedia.net/recitations/272/')]},
+    'hisham':        {'rawi_id': 7,  'defaults': [(273, 'مفتاح محمد السلطني (هشام)', 'https://files.quranpedia.net/recitations/273/')]},
+    'ibn_dhakwan':   {'rawi_id': 8,  'defaults': [(274, 'مفتاح محمد السلطني (ابن ذكوان)', 'https://files.quranpedia.net/recitations/274/')]},
+    'shouba':        {'rawi_id': 9,  'defaults': [(275, 'عبد الرشيد صوفي (شعبة)', 'https://files.quranpedia.net/recitations/275/')]},
+    'hafs':          {'rawi_id': 10, 'defaults': [(251, 'إبراهيم الأخضر (حفص)', 'https://files.quranpedia.net/recitations/251/')]},
+    'khalaf_hamzah': {'rawi_id': 11, 'defaults': [(277, 'عبد الرشيد صوفي (خلف عن حمزة)', 'https://files.quranpedia.net/recitations/277/')]},
+    'khallad':       {'rawi_id': 12, 'defaults': [(278, 'مفتاح محمد السلطني (خلاد)', 'https://files.quranpedia.net/recitations/278/')]},
+    'harith':        {'rawi_id': 13, 'defaults': [(279, 'عبد الرشيد صوفي (أبو الحارث)', 'https://files.quranpedia.net/recitations/279/')]},
+    'douri_kisai':   {'rawi_id': 14, 'defaults': [(280, 'عبد الرشيد صوفي (الدوري عن الكسائي)', 'https://files.quranpedia.net/recitations/280/')]},
+    'wardan':        {'rawi_id': 15, 'defaults': [(282, 'مفتاح محمد السلطني (ابن وردان)', 'https://files.quranpedia.net/recitations/282/')]},
+    'ibn_jammaz':    {'rawi_id': 16, 'defaults': [(283, 'مفتاح محمد السلطني (ابن جماز)', 'https://files.quranpedia.net/recitations/283/')]},
+    'ruways':        {'rawi_id': 17, 'defaults': [(284, 'ياسر المزروعي (رويس)', 'https://files.quranpedia.net/recitations/284/')]},
+    'rawh':          {'rawi_id': 18, 'defaults': [(286, 'ياسر المزروعي (روح)', 'https://files.quranpedia.net/recitations/286/')]},
+    'ishaq':         {'rawi_id': 19, 'defaults': [(287, 'مفتاح محمد السلطني (إسحاق)', 'https://files.quranpedia.net/recitations/287/')]},
+    'idris':         {'rawi_id': 20, 'defaults': [(288, 'مفتاح محمد السلطني (إدريس)', 'https://files.quranpedia.net/recitations/288/')]},
+}
+
+for _q in QIRAAT:
+    _qp = QURANPEDIA_RAWI_MAP.get(_q['key'], {})
+    _q['quranpediaRawiId'] = _qp.get('rawi_id')
+    _q['quranpediaDefaultReciters'] = _qp.get('defaults', [])
+
 QIRAAT_BY_KEY = {q['key']: q for q in QIRAAT}
 
 QF_QIRAA_HINTS = {
@@ -335,6 +368,8 @@ QF_QIRAA_HINTS = {
 ALLOWED_AUDIO_HOSTS = {
     'everyayah.com',
     'www.everyayah.com',
+    'files.quranpedia.net',
+    'verse.mp3quran.net',
     'cdn.islamic.network',
     'verses.quran.foundation',
     'audio.qurancdn.com',

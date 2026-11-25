@@ -1,5 +1,6 @@
 import concurrent.futures
 import logging
+import re
 import sqlite3
 
 import requests
@@ -11,6 +12,8 @@ from config import (
     QIRAAT10_API_BASE,
     QIRAAT_AYAH_MAP_URL,
     QIRAAT_BY_KEY,
+    QIRAAT_NOTES_URL,
+    QURAN_DATA_PAGES_URL,
     QF_QIRAAT_ENABLED,
     REQUEST_TIMEOUT,
 )
@@ -163,13 +166,14 @@ def get_surah_variants(conn: sqlite3.Connection, surah_id: int, qiraa_keys: list
     """
     c = conn.cursor()
     if qiraa_keys:
-        placeholders = ','.join('?' for _ in qiraa_keys)
+        query_keys = [*qiraa_keys, '_all']
+        placeholders = ','.join('?' for _ in query_keys)
         c.execute(
             f'''SELECT ayah, qiraa, hafs_word, variant_text, note, rule_type, source
                 FROM qiraat_variants
                 WHERE surah = ? AND qiraa IN ({placeholders})
                 ORDER BY ayah, id''',
-            [surah_id, *qiraa_keys],
+            [surah_id, *query_keys],
         )
     else:
         c.execute(
@@ -181,15 +185,27 @@ def get_surah_variants(conn: sqlite3.Connection, surah_id: int, qiraa_keys: list
         )
 
     out: dict[str, dict[int, list[dict]]] = {}
+    all_notes: dict[int, list[dict]] = {}
     for row in c.fetchall():
-        q_map = out.setdefault(row['qiraa'], {})
-        q_map.setdefault(int(row['ayah']), []).append({
+        item = {
             'hafs_word':    row['hafs_word'] or '',
             'variant_text': row['variant_text'] or '',
             'note':         row['note'] or '',
             'rule_type':    row['rule_type'] or 'farsh',
             'source':       row['source'] or 'curated',
-        })
+        }
+        if row['qiraa'] == '_all':
+            all_notes.setdefault(int(row['ayah']), []).append(item)
+        else:
+            q_map = out.setdefault(row['qiraa'], {})
+            q_map.setdefault(int(row['ayah']), []).append(item)
+
+    if all_notes:
+        target_keys = qiraa_keys or [q['key'] for q in QIRAAT]
+        for qk in target_keys:
+            q_map = out.setdefault(qk, {})
+            for ayah_num, items in all_notes.items():
+                q_map.setdefault(ayah_num, []).extend(items)
 
     if QF_QIRAAT_ENABLED:
         _enrich_variants_from_qf_if_available(surah_id, out)
@@ -297,6 +313,167 @@ def sync_ayah_map_from_github(conn: sqlite3.Connection) -> int:
         '''INSERT OR IGNORE INTO ayah_count_notes
            (surah, kufi_ayah, counting_system, boundary_type, anchor_word, note)
            VALUES (?, ?, ?, ?, ?, ?)''',
+        tuples,
+    )
+    conn.commit()
+    return conn.total_changes - before
+
+
+def _ar_digits_to_ascii(text: str) -> str:
+    trans = str.maketrans('٠١٢٣٤٥٦٧٨٩', '0123456789')
+    return str(text or '').translate(trans)
+
+
+def _match_riwayat_in_note(note_text: str) -> list[str]:
+    """Identify canonical riwayat keys referenced in an Arabic Qiraat farsh/usul note."""
+    norm = _ar_digits_to_ascii(note_text)
+    matched: set[str] = set()
+
+    # Specific transmitters
+    rawi_patterns = [
+        ('qaloon',        ['قالون']),
+        ('warsh',         ['ورش']),
+        ('bazzi',         ['البزي', 'بزي']),
+        ('qumbul',        ['قنبل']),
+        ('douri',         ['الدوري عن أبي عمرو', 'الدوري عن ابي عمرو']),
+        ('susi',          ['السوسي']),
+        ('hisham',        ['هشام']),
+        ('ibn_dhakwan',   ['ابن ذكوان', 'ذكوان']),
+        ('shouba',        ['شعبة']),
+        ('hafs',          ['حفص']),
+        ('khalaf_hamzah', ['خلف عن حمزة']),
+        ('khallad',       ['خلاد']),
+        ('harith',        ['أبو الحارث', 'ابو الحارث', 'الحارث']),
+        ('douri_kisai',   ['الدوري عن الكسائي']),
+        ('wardan',        ['ابن وردان', 'وردان']),
+        ('ibn_jammaz',    ['ابن جماز', 'جماز']),
+        ('ruways',        ['رويس']),
+        ('rawh',          ['روح']),
+        ('ishaq',         ['إسحاق', 'اسحاق']),
+        ('idris',         ['إدريس', 'ادريس']),
+    ]
+    for key, pats in rawi_patterns:
+        if any(p in norm for p in pats):
+            matched.add(key)
+
+    # Generic الدوري (applies to both Abu Amr and Al-Kisa'i if neither specific phrase matched)
+    if 'الدوري' in norm and 'douri' not in matched and 'douri_kisai' not in matched:
+        matched.update(['douri', 'douri_kisai'])
+
+    # Imams & canonical groupings
+    group_patterns = [
+        (['نافع'],                  ['qaloon', 'warsh']),
+        (['ابن كثير'],              ['bazzi', 'qumbul']),
+        (['أبو عمرو', 'أبوعمرو', 'ابو عمرو'], ['douri', 'susi']),
+        (['ابن عامر', 'الشامي'],    ['hisham', 'ibn_dhakwan']),
+        (['عاصم'],                  ['shouba', 'hafs']),
+        (['حمزة'],                  ['khalaf_hamzah', 'khallad']),
+        (['الكسائي', 'الكسائى'],    ['harith', 'douri_kisai']),
+        (['أبو جعفر', 'أبوجعفر', 'ابو جعفر'], ['wardan', 'ibn_jammaz']),
+        (['يعقوب'],                 ['ruways', 'rawh']),
+        (['خلف العاشر', 'خلف في اختياره'], ['ishaq', 'idris']),
+        (['الكوفيون', 'الكوفيين'], ['shouba', 'hafs', 'khalaf_hamzah', 'khallad', 'harith', 'douri_kisai', 'ishaq', 'idris']),
+        (['المدنيان'],              ['qaloon', 'warsh', 'wardan', 'ibn_jammaz']),
+        (['الحرميان'],              ['qaloon', 'warsh', 'bazzi', 'qumbul']),
+        (['البصريان'],              ['douri', 'susi', 'ruways', 'rawh']),
+    ]
+    for pats, keys in group_patterns:
+        if any(p in norm for p in pats):
+            matched.update(keys)
+
+    if not matched:
+        return ['_all']
+    return sorted(matched)
+
+
+def parse_qiraat_notes_pages(notes_payload: dict, quran_pages_payload: dict) -> list[tuple]:
+    """
+    Parse QZTA/qiraat-api qiraat-notes.json (604 pages) + quran-data.json page->verses map
+    into tuples ready for qiraat_variants:
+      (surah, ayah, qiraa, hafs_word, variant_text, note, rule_type, source)
+    """
+    page_verses: dict[int, list[tuple[int, int]]] = {}
+    for p_obj in quran_pages_payload.get('pages') or []:
+        if not isinstance(p_obj, dict) or not p_obj.get('page'):
+            continue
+        p_num = int(p_obj['page'])
+        v_list = []
+        for v in p_obj.get('verses') or []:
+            if isinstance(v, dict) and v.get('chapter') and v.get('number'):
+                v_list.append((int(v['chapter']), int(v['number'])))
+        if v_list:
+            page_verses[p_num] = v_list
+
+    tuples: list[tuple] = []
+    for p_entry in notes_payload.get('pages') or []:
+        if not isinstance(p_entry, dict) or not p_entry.get('page'):
+            continue
+        p_num = int(p_entry['page'])
+        verses_on_page = page_verses.get(p_num) or []
+        if not verses_on_page:
+            continue
+
+        # Map ayah_num -> list of (surah, ayah) on this page (handles multi-surah pages)
+        ayah_lookup: dict[int, list[tuple[int, int]]] = {}
+        for s_id, a_id in verses_on_page:
+            ayah_lookup.setdefault(a_id, []).append((s_id, a_id))
+
+        for rule_type, field in (('farsh', 'farsh'), ('usul', 'usul')):
+            for raw_note in p_entry.get(field) or []:
+                note_str = str(raw_note or '').strip()
+                if not note_str:
+                    continue
+
+                # Extract leading ayah numbers before '-' (e.g. "٤ - (مَالِكِ): ..." or "١٣، ١١ - ...")
+                ascii_note = _ar_digits_to_ascii(note_str)
+                head_match = re.match(r'^([0-9،,\s]+)\s*[-–:]\s*(.*)$', ascii_note)
+                target_coords: list[tuple[int, int]] = []
+                body = note_str
+                if head_match:
+                    nums = [int(n) for n in re.findall(r'\d+', head_match.group(1))]
+                    for n in nums:
+                        target_coords.extend(ayah_lookup.get(n, []))
+                if not target_coords:
+                    # Page-level usul or unmatched number -> attach to first verse on the page
+                    target_coords = [verses_on_page[0]]
+
+                # Extract word inside first (...) if present
+                word_match = re.search(r'\(([^)]{1,60})\)', note_str)
+                hafs_word = word_match.group(1).strip() if word_match else ''
+                variant_text = hafs_word or ('أصول القراءة' if rule_type == 'usul' else 'فرش الحروف')
+
+                riwayat_keys = _match_riwayat_in_note(note_str)
+                # Keep DB compact: if >=10 riwayat match or '_all', store once under '_all'
+                if len(riwayat_keys) >= 10:
+                    riwayat_keys = ['_all']
+
+                for s_id, a_id in target_coords:
+                    for rk in riwayat_keys:
+                        tuples.append((
+                            s_id, a_id, rk, hafs_word, variant_text,
+                            note_str, rule_type, 'shatibiyyah_durrah',
+                        ))
+
+    return tuples
+
+
+def sync_qiraat_notes_from_github(conn: sqlite3.Connection) -> int:
+    """Download 604-page Ten-Qiraat Farsh & Usul notes and store into qiraat_variants."""
+    session = get_http_session()
+    notes_resp = session.get(QIRAAT_NOTES_URL, timeout=max(REQUEST_TIMEOUT, 20))
+    notes_resp.raise_for_status()
+    pages_resp = session.get(QURAN_DATA_PAGES_URL, timeout=max(REQUEST_TIMEOUT, 20))
+    pages_resp.raise_for_status()
+
+    tuples = parse_qiraat_notes_pages(notes_resp.json(), pages_resp.json())
+    if not tuples:
+        return 0
+
+    before = conn.total_changes
+    conn.executemany(
+        '''INSERT OR IGNORE INTO qiraat_variants
+           (surah, ayah, qiraa, hafs_word, variant_text, note, rule_type, source)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
         tuples,
     )
     conn.commit()

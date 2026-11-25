@@ -1246,3 +1246,156 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Translations Combobox + Selected Strip + Vintage Listbox ────────────── */
+.tr-lang-select {
+  background: var(--surface-inset);
+  color: var(--text);
+  border: none;
+  box-shadow: var(--border-sunken);
+  padding: 5px 8px;
+  font-family: 'Cairo', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  max-width: 210px;
+}
+
+.tr-search-input {
+  font-family: 'Cairo', sans-serif;
+  min-width: 220px;
+}
+
+.tr-selected-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 6px;
+  background: var(--surface-inset);
+  box-shadow: var(--border-sunken);
+}
+
+.tr-selected-lbl {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.tr-sel-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--primary);
+  color: var(--text-on-primary);
+  box-shadow: var(--border-raised);
+  padding: 2px 8px;
+  font-family: 'Cairo', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tr-sel-remove {
+  background: var(--surface);
+  color: var(--text);
+  border: none;
+  box-shadow: var(--border-raised);
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.tr-sel-remove:hover {
+  background: var(--danger);
+  color: #FFFFFF;
+}
+
+.tr-picker-panel {
+  margin-top: 4px;
+}
+
+.tr-listbox {
+  background: var(--surface-inset);
+  box-shadow: var(--border-sunken);
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.tr-option-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  border-bottom: 1px solid var(--bevel-mid);
+  font-family: 'Cairo', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  text-align: right;
+  cursor: pointer;
+}
+
+.tr-option-row:last-child {
+  border-bottom: none;
+}
+
+.tr-option-row:hover {
+  background: var(--surface);
+}
+
+.tr-option-row.on {
+  background: var(--primary);
+  color: var(--text-on-primary);
+  font-weight: 700;
+}
+
+.tr-opt-state {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 44px;
+}
+
+.tr-opt-lang {
+  font-weight: 700;
+  min-width: 120px;
+}
+
+.tr-opt-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tr-opt-src {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.tr-option-row.on .tr-opt-src {
+  color: #E6F4F4;
+}
+
+.tr-opt-audio {
+  background: var(--success);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+}
+
+@media (max-width: 680px) {
+  #qiraat-bar.is-collapsed .tr-selected-bar,
+  #qiraat-bar.is-collapsed .tr-picker-panel {
+    display: none !important;
+  }
+}

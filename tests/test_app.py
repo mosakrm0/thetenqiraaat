@@ -116,14 +116,26 @@ class TestAppRoutes(unittest.TestCase):
         self.assertIn('الروايات الثماني المتوفرة رقمياً تعرض نصها العثماني الكامل', readings_html)
 
     def test_get_surah_with_variants_and_count_notes(self):
-        resp = self.client.get('/api/surah/1?qiraat=hafs,warsh')
+        resp = self.client.get('/api/surah/1?qiraat=hafs,warsh,ibn_dhakwan')
         self.assertEqual(resp.status_code, 200)
         body = resp.get_json()
         self.assertIn('hafs', body['data'])
         self.assertIn('warsh', body['data'])
+        self.assertIn('ibn_dhakwan', body['data'])
         self.assertEqual(body['data']['warsh']['text_tier'], 'kfgqpc_full')
+        self.assertEqual(body['data']['ibn_dhakwan']['ayahs'][0]['text'], body['data']['hafs']['ayahs'][0]['text'])
         self.assertIn('1', body['data']['warsh']['count_notes'])
         self.assertIn('4', body['data']['hafs']['variants'])
+
+    def test_parse_qiraat_notes_pages_handles_arabic_digits_and_riwayat(self):
+        from services.qiraat import parse_qiraat_notes_pages
+        notes = {'pages': [{'page': 1, 'farsh': ['٤ - (مَالِكِ): قرأ عاصم والكسائي بألف وقرأ ابن عامر وحمزة بحذفها.'], 'usul': []}]}
+        pages = {'pages': [{'page': 1, 'verses': [{'chapter': 1, 'number': 4}]}]}
+        tuples = parse_qiraat_notes_pages(notes, pages)
+        riwayat_matched = {t[2] for t in tuples}
+        self.assertIn('hafs', riwayat_matched)
+        self.assertIn('hisham', riwayat_matched)
+        self.assertIn('khalaf_hamzah', riwayat_matched)
 
     def test_get_surah_invalid_id(self):
         self.assertEqual(self.client.get('/api/surah/0').status_code, 400)
