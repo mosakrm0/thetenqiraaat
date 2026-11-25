@@ -273,8 +273,107 @@ class TestAppRoutes(unittest.TestCase):
             self.assertIn(token, css, f'style.css missing responsive rule: {token}')
 
         common_js = (root / 'common.js').read_text(encoding='utf-8')
-        for fn in ('initResponsiveShell', 'toggleSidebar', 'closeSidebarOnMobile'):
+        for fn in ('initResponsiveShell', 'toggleSidebar', 'closeSidebarOnMobile', 'normalizeArabicSearch'):
             self.assertIn(fn, common_js, f'common.js missing {fn}')
+
+    def test_security_headers_case_insensitive_qiraat_and_json_errors(self):
+        for route in ('/', '/api/qiraat'):
+            resp = self.client.get(route)
+            self.assertEqual(resp.headers.get('X-Content-Type-Options'), 'nosniff')
+            self.assertEqual(resp.headers.get('X-Frame-Options'), 'DENY')
+            self.assertEqual(resp.headers.get('Referrer-Policy'), 'strict-origin-when-cross-origin')
+            self.assertIn("default-src 'self'", resp.headers.get('Content-Security-Policy', ''))
+
+        # Case-insensitive qiraat param
+        r_upper = self.client.get('/api/surah/1?qiraat=HAFS,Warsh')
+        self.assertEqual(r_upper.status_code, 200)
+        self.assertIn('hafs', r_upper.get_json()['data'])
+        self.assertIn('warsh', r_upper.get_json()['data'])
+
+        # Malformed reciter returns 400 JSON, not 500
+        for bad in ('qf_public:abc', 'qdc_chapter:abc', 'mp3quran:abc', 'unknown:1'):
+            r_rec = self.client.get(f'/api/audio/surah-map?qiraa=hafs&surah=1&reciter={bad}')
+            self.assertEqual(r_rec.status_code, 400)
+            self.assertFalse(r_rec.get_json()['available'])
+
+        # JSON 404 on /api/*
+        r_404 = self.client.get('/api/does-not-exist')
+        self.assertEqual(r_404.status_code, 404)
+        self.assertEqual(r_404.content_type, 'application/json')
+
+        # Max translations cap
+        too_many = ','.join(f'k{i}' for i in range(config.MAX_TRANSLATIONS_PER_REQUEST + 1))
+        r_cap = self.client.get(f'/api/translations/surah/1?keys={too_many}')
+        self.assertEqual(r_cap.status_code, 400)
+
+    def test_audio_proxy_blocks_redirects_html_and_bad_urls(self):
+        for bad_url in (
+            'https://everyayah.com:8443/data/a.mp3',
+            'https://user:pass@everyayah.com/data/a.mp3',
+            'https://evil-sub.mp3quran.net/index.html',
+            'https://everyayah.com/../../etc/passwd',
+        ):
+            self.assertEqual(self.client.get(f'/api/audio-proxy?url={bad_url}').status_code, 400)
+
+        for status, hdrs in (
+            (302, {'Location': 'https://evil.com/x', 'Content-Length': '1', 'Content-Type': 'audio/mpeg'}),
+            (200, {'Content-Length': '-5', 'Content-Type': 'audio/mpeg'}),
+            (200, {'Content-Length': '14', 'Content-Type': 'text/html; charset=utf-8'}),
+        ):
+            mock_resp = MagicMock()
+            mock_resp.status_code = status
+            mock_resp.headers = hdrs
+            mock_resp.iter_content.return_value = [b'<html>x</html>']
+            with patch('app.get_http_session') as gs:
+                gs.return_value.get.return_value = mock_resp
+                resp = self.client.get('/api/audio-proxy?url=https://everyayah.com/data/001001.mp3')
+                self.assertEqual(resp.status_code, 502)
+
+    def test_multi_surah_alignment_and_khalaf_ashir_patterns(self):
+        conn = db_mod.get_db_connection(self.tmp_db)
+        try:
+            conn.executemany(
+                'INSERT OR REPLACE INTO ayahs (surah, ayah, qiraa, text) VALUES (?, ?, ?, ?)',
+                [
+                    (2, 1, 'hafs', 'بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ الٓمٓ'),
+                    (2, 2, 'hafs', 'ذَٰلِكَ ٱلْكِتَٰبُ لَا رَيْبَ فِيهِ هُدًى لِّلْمُتَّقِينَ'),
+                    (2, 3, 'hafs', 'ٱلَّذِينَ يُؤْمِنُونَ بِٱلْغَيْبِ وَيُقِيمُونَ ٱلصَّلَوٰةَ'),
+                    (2, 1, 'warsh', 'أَلَٓمِّٓ ذَٰلِكَ اَ۬لْكِتَٰبُ لَا رَيْبَ فِيهِ هُدىٗ لِّلْمُتَّقِينَ 1'),
+                    (2, 2, 'warsh', 'اَ۬لذِينَ يُومِنُونَ بِالْغَيْبِ وَيُقِيمُونَ اَ۬لصَّلَوٰةَ 2'),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        r2 = self.client.get('/api/surah/2?qiraat=hafs,warsh').get_json()
+        self.assertEqual(r2['meta']['max_ayah'], 3)
+        self.assertIn('أَلَٓمِّٓ', r2['data']['warsh']['ayahs'][0]['text'])
+        self.assertIn('رَيْبَ', r2['data']['warsh']['ayahs'][1]['text'])
+        self.assertIn('يُومِنُونَ', r2['data']['warsh']['ayahs'][2]['text'])
+
+        from services.qiraat import _match_riwayat_in_note
+        self.assertEqual(_match_riwayat_in_note('قرأ خلف البزار بالإمالة'), ['idris', 'ishaq'])
+        self.assertEqual(_match_riwayat_in_note('وافق العاشر حفصا'), ['hafs', 'idris', 'ishaq'])
+
+    def test_frontend_security_and_accessibility_invariants(self):
+        root = Path(config.BASE_DIR)
+        tr_js = (root / 'static' / 'translations.js').read_text(encoding='utf-8')
+        self.assertNotIn('onclick="removeSelected(', tr_js)
+        self.assertIn('loadTicket', tr_js)
+        self.assertIn('normalizeArabicSearch', tr_js)
+
+        sc_js = (root / 'static' / 'script.js').read_text(encoding='utf-8')
+        self.assertNotIn('onchange="onReciterChange(', sc_js)
+        self.assertIn('normalizeArabicSearch', sc_js)
+
+        for tpl in ('readings.html', 'translations.html', 'intro.html'):
+            html = (root / 'templates' / tpl).read_text(encoding='utf-8')
+            self.assertIn('<main id="content">', html)
+            self.assertIn('<h1 class="tb-name"', html)
+
+        css = (root / 'static' / 'style.css').read_text(encoding='utf-8')
+        self.assertIn(':focus:not(:focus-visible)', css)
 
 
 if __name__ == '__main__':

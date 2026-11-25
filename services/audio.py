@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 _qf_token_lock = threading.Lock()
 _qf_token = {'value': None, 'exp': 0.0}
 _SURAH_AYAH_COUNTS: dict[int, int] | None = None
+_CACHE_MISS = object()
 
 
 def get_surah_ayah_count(surah_id: int) -> int:
@@ -221,8 +222,8 @@ def _fetch_chapter_audio_map_paginated(fetch_fn) -> dict[int, str]:
 def qf_get_chapter_audio_map(session, recitation_id: int, surah_number: int) -> dict[int, str]:
     cache = get_cache()
     cache_key = f'qf_chapter_audio_{recitation_id}_{surah_number}'
-    cached = cache.get(cache_key)
-    if cached:
+    cached = cache.get(cache_key, default=_CACHE_MISS)
+    if cached is not _CACHE_MISS:
         return cached
 
     def fetch_fn(page):
@@ -240,8 +241,8 @@ def qf_get_chapter_audio_map(session, recitation_id: int, surah_number: int) -> 
 def qf_pick_recitation_for_qiraa(session, qiraa_key: str, surah_number: int):
     cache = get_cache()
     choice_cache_key = f'qf_choice_{qiraa_key}_{surah_number}'
-    cached = cache.get(choice_cache_key)
-    if cached:
+    cached = cache.get(choice_cache_key, default=_CACHE_MISS)
+    if cached is not _CACHE_MISS:
         return cached
 
     scored = sorted(
@@ -283,8 +284,8 @@ def _resolve_audio_url(raw_url: str) -> str:
 def qf_public_get_chapter_audio_map(surah_number: int, qf_public_id: int) -> dict[int, str]:
     cache = get_cache()
     cache_key = f'qf_public_audio_{qf_public_id}_{surah_number}'
-    cached = cache.get(cache_key)
-    if cached:
+    cached = cache.get(cache_key, default=_CACHE_MISS)
+    if cached is not _CACHE_MISS:
         return cached
 
     session = get_http_session()
@@ -655,15 +656,16 @@ def mp3quran_get_reciters_for_qiraa(qiraa_key: str, surah_id: int) -> list[dict]
             surah_url = f'{base_url}{surah_id:03d}.mp3'
             m_name = str(m.get('name') or '').strip()
             label = f'{rec_name} ({m_name})' if m_name else rec_name
+            moshaf_has_timing = has_timing or (int(moshaf_id) in timing_reads)
             items.append({
                 'id':          f'mp3quran:{moshaf_id}',
                 'moshaf_id':   int(moshaf_id),
-                'has_timing':  has_timing or (int(moshaf_id) in timing_reads),
+                'has_timing':  moshaf_has_timing,
                 'name':        label or f'MP3Quran #{moshaf_id}',
                 'surah_url':   surah_url,
                 'surah_total': surah_total,
                 'source':      'mp3quran',
-                'mode_hint':   'timed-surah' if has_timing else 'surah',
+                'mode_hint':   'timed-surah' if moshaf_has_timing else 'surah',
             })
 
     items.sort(key=lambda x: (0 if x['has_timing'] else 1, -x['surah_total'], x['name']))
@@ -875,7 +877,12 @@ def _resolve_specific_reciter(qiraa_key: str, surah_id: int, reciter_id: str) ->
                 }
 
     if reciter_id.startswith('qf_public:'):
-        pid = int(reciter_id.split(':', 1)[1])
+        try:
+            pid = int(reciter_id.split(':', 1)[1])
+        except ValueError:
+            return None
+        if QIRAAT_BY_KEY.get(qiraa_key, {}).get('qfPublicId') != pid:
+            return None
         ayah_map = qf_public_get_chapter_audio_map(surah_id, pid)
         if ayah_map:
             return {
@@ -888,7 +895,13 @@ def _resolve_specific_reciter(qiraa_key: str, surah_id: int, reciter_id: str) ->
             }
 
     if reciter_id.startswith('qdc_chapter:'):
-        rid = int(reciter_id.split(':', 1)[1])
+        try:
+            rid = int(reciter_id.split(':', 1)[1])
+        except ValueError:
+            return None
+        allowed_rids = {r['reciter_id'] for r in qdc_get_chapter_reciters_for_qiraa(qiraa_key)}
+        if rid not in allowed_rids:
+            return None
         surah_url, timings = qdc_get_chapter_audio_with_timings(rid, surah_id)
         if surah_url and timings:
             return {
@@ -911,7 +924,10 @@ def _resolve_specific_reciter(qiraa_key: str, surah_id: int, reciter_id: str) ->
             }
 
     if reciter_id.startswith('mp3quran:'):
-        mid = int(reciter_id.split(':', 1)[1])
+        try:
+            mid = int(reciter_id.split(':', 1)[1])
+        except ValueError:
+            return None
         for mp3 in mp3quran_get_reciters_for_qiraa(qiraa_key, surah_id):
             if mp3['moshaf_id'] == mid:
                 timings = mp3quran_get_ayat_timing(mid, surah_id)

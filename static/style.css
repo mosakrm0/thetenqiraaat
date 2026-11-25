@@ -355,6 +355,12 @@ body {
   font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 400;
+}
+
+.tr-search-input:focus:not(:focus-visible),
+.r-input:focus:not(:focus-visible),
+.speed-select:focus:not(:focus-visible),
+.reciter-select:focus:not(:focus-visible) {
   outline: none;
 }
 

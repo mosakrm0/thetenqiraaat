@@ -83,6 +83,8 @@ QF_CHAPTER_CACHE_TTL_SEC = 60 * 60 * 3
 QF_PUBLIC_AUDIO_TTL_SEC  = 60 * 60 * 6
 
 RATELIMIT_STORAGE_URI = os.getenv('RATELIMIT_STORAGE_URI', 'memory://').strip() or 'memory://'
+MAX_TRANSLATIONS_PER_REQUEST = int(os.getenv('MAX_TRANSLATIONS_PER_REQUEST', '12'))
+TRUST_PROXY_COUNT = int(os.getenv('TRUST_PROXY_COUNT', '0'))
 
 IMAMS = [
     {'key': 'nafi',         'name': 'نافع المدني',        'order': 1},

@@ -12,9 +12,45 @@ def get_db_connection(db_path: Path | str | None = None):
     target = str(db_path or DB_PATH)
     conn = sqlite3.connect(target, timeout=5.0)
     conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA journal_mode=WAL;')
+    conn.execute('PRAGMA busy_timeout=5000;')
     conn.execute('PRAGMA synchronous=NORMAL;')
     return conn
+
+
+def _migrate_db(conn: sqlite3.Connection):
+    """Idempotent schema migrations tracked via PRAGMA user_version."""
+    version = conn.execute('PRAGMA user_version').fetchone()[0]
+    if version < 2:
+        conn.execute('DROP TABLE IF EXISTS feedback_messages')
+        conn.execute('DROP TABLE IF EXISTS translations_local_ayahs')
+        conn.execute('DROP TABLE IF EXISTS translations_local_meta')
+
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='qiraat_variants'"
+        ).fetchone()
+        if row and row[0] and 'UNIQUE(surah, ayah, qiraa, hafs_word, variant_text)' in row[0]:
+            conn.execute('''CREATE TABLE qiraat_variants_new (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                surah        INTEGER NOT NULL,
+                ayah         INTEGER NOT NULL,
+                qiraa        TEXT NOT NULL,
+                hafs_word    TEXT,
+                variant_text TEXT NOT NULL,
+                note         TEXT,
+                rule_type    TEXT DEFAULT 'farsh',
+                source       TEXT DEFAULT 'curated',
+                UNIQUE(surah, ayah, qiraa, hafs_word, variant_text, note)
+            )''')
+            conn.execute('''INSERT OR IGNORE INTO qiraat_variants_new
+                (id, surah, ayah, qiraa, hafs_word, variant_text, note, rule_type, source)
+                SELECT id, surah, ayah, qiraa, hafs_word, variant_text, note, rule_type, source
+                FROM qiraat_variants''')
+            conn.execute('DROP TABLE qiraat_variants')
+            conn.execute('ALTER TABLE qiraat_variants_new RENAME TO qiraat_variants')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_variants_surah_qiraa ON qiraat_variants(surah, qiraa)')
+
+        conn.execute('PRAGMA user_version = 2')
+        conn.commit()
 
 
 def init_db(db_path: Path | str | None = None):
@@ -43,7 +79,7 @@ def init_db(db_path: Path | str | None = None):
             note         TEXT,
             rule_type    TEXT DEFAULT 'farsh',
             source       TEXT DEFAULT 'curated',
-            UNIQUE(surah, ayah, qiraa, hafs_word, variant_text)
+            UNIQUE(surah, ayah, qiraa, hafs_word, variant_text, note)
         )''')
         c.execute('CREATE INDEX IF NOT EXISTS idx_variants_surah_qiraa ON qiraat_variants(surah, qiraa)')
 
@@ -60,6 +96,7 @@ def init_db(db_path: Path | str | None = None):
         c.execute('CREATE INDEX IF NOT EXISTS idx_count_notes_surah ON ayah_count_notes(surah)')
         conn.commit()
 
+        _migrate_db(conn)
         _seed_curated_tables_if_empty(conn)
     finally:
         conn.close()

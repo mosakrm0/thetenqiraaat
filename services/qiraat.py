@@ -15,7 +15,6 @@ from config import (
     QIRAAT_BY_KEY,
     QIRAAT_NOTES_URL,
     QURAN_DATA_PAGES_URL,
-    QF_QIRAAT_ENABLED,
     REQUEST_TIMEOUT,
 )
 from services.http_client import get_cache, get_http_session
@@ -25,14 +24,27 @@ logger = logging.getLogger(__name__)
 
 def extract_ayahs(source: str, payload: dict) -> dict[int, str]:
     ayah_map: dict[int, str] = {}
+    if not isinstance(payload, dict):
+        return ayah_map
     if source == 'fawaz':
-        for item in payload.get('chapter', []):
+        items = payload.get('chapter')
+        if not isinstance(items, list):
+            return ayah_map
+        for item in items:
+            if not isinstance(item, dict):
+                continue
             verse = item.get('verse')
             text = item.get('text')
             if isinstance(verse, int) and isinstance(text, str):
                 ayah_map[verse] = text
     else:
-        for item in payload.get('data', {}).get('ayahs', []):
+        data = payload.get('data')
+        items = data.get('ayahs') if isinstance(data, dict) else None
+        if not isinstance(items, list):
+            return ayah_map
+        for item in items:
+            if not isinstance(item, dict):
+                continue
             verse = item.get('numberInSurah')
             text = item.get('text')
             if isinstance(verse, int) and isinstance(text, str):
@@ -221,27 +233,7 @@ def get_surah_variants(conn: sqlite3.Connection, surah_id: int, qiraa_keys: list
                 deduped.append(it)
             ayah_dict[ayah_num] = deduped
 
-    if QF_QIRAAT_ENABLED:
-        _enrich_variants_from_qf_if_available(surah_id, out)
-
     return out
-
-
-def _enrich_variants_from_qf_if_available(surah_id: int, out: dict) -> None:
-    """Best-effort hook for Quran Foundation Qira'at API v4 (requires qiraat.read scope)."""
-    try:
-        from services.audio import qf_api_get, qf_is_enabled
-        if not qf_is_enabled():
-            return
-        cache = get_cache()
-        cache_key = f'qf_qiraat_matrix_{surah_id}'
-        cached = cache.get(cache_key)
-        if cached is None:
-            session = get_http_session()
-            payload = qf_api_get(session, f'/qiraat/matrix/by_chapter/{int(surah_id)}')
-            cache.set(cache_key, payload or {}, expire=60 * 60 * 6)
-    except Exception as exc:
-        logger.debug('QF qiraat matrix unavailable for surah %s: %s', surah_id, exc)
 
 
 def get_surah_count_notes(conn: sqlite3.Connection, surah_id: int, qiraa_keys: list[str] | None = None) -> dict[str, dict[int, list[dict]]]:
@@ -428,7 +420,8 @@ def _match_riwayat_in_note(note_text: str) -> list[str]:
         (['الكسائي'],                    ['harith', 'douri_kisai']),
         (['ابو جعفر', 'ابي جعفر', 'ابوجعفر'], ['wardan', 'ibn_jammaz']),
         (['يعقوب'],                      ['ruways', 'rawh']),
-        (['خلف العاشر', 'خلف في اختياره'], ['ishaq', 'idris']),
+        (['خلف العاشر', 'خلف في اختياره', 'خلف البزار', 'الامام العاشر'], ['ishaq', 'idris']),
+        (['اصحاب الدره', 'القراء الثلاثه'], ['wardan', 'ibn_jammaz', 'ruways', 'rawh', 'ishaq', 'idris']),
         (['الكوفيون', 'الكوفيين'],       ['shouba', 'hafs', 'khalaf_hamzah', 'khallad', 'harith', 'douri_kisai', 'ishaq', 'idris']),
         (['المدنيان'],                   ['qaloon', 'warsh', 'wardan', 'ibn_jammaz']),
         (['الحرميان'],                   ['qaloon', 'warsh', 'bazzi', 'qumbul']),
@@ -437,6 +430,8 @@ def _match_riwayat_in_note(note_text: str) -> list[str]:
     for pats, keys in group_patterns:
         if any(p in group_norm for p in pats):
             matched.update(keys)
+    if re.search(r'(?:^|\s)العاشر(?:\s|$)', group_norm):
+        matched.update(['ishaq', 'idris'])
 
     return sorted(matched)
 
@@ -487,10 +482,15 @@ def parse_qiraat_notes_pages(notes_payload: dict, quran_pages_payload: dict) -> 
                 # Update current_surah on surah headers ("سورة الإخلاص", "سورةالناس", etc.)
                 if norm_line.startswith('سوره'):
                     rest = re.sub(r'^سوره\s*', '', norm_line).strip()
-                    for s_id in surahs_on_page:
-                        for nm, mapped_id in surah_map.items():
-                            if mapped_id == s_id and (nm == rest or nm in rest or rest in nm):
-                                current_surah = s_id
+                    if rest:
+                        found_surah = None
+                        for s_id in surahs_on_page:
+                            for nm, mapped_id in surah_map.items():
+                                if mapped_id == s_id and (nm == rest or nm in rest or rest in nm):
+                                    found_surah = s_id
+                                    break
+                            if found_surah is not None:
+                                current_surah = found_surah
                                 break
                     continue
 

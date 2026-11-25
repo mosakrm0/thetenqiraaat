@@ -42,7 +42,7 @@ thetenqiraaat/
 │   ├── qiraat.py            # Qiraat text, 604-page Farsh/Usul & ayah-counting service
 │   ├── audio.py             # 4-tier audio resolver & reciter discovery
 │   └── translations.py      # Concurrent deduplicated translations catalog & fetcher
-├── templates/               # Jinja2 templates (index, readings, translations, feedback)
+├── templates/               # Jinja2 templates (index, readings, translations, intro, feedback)
 ├── static/                  # common.js, script.js, translations.js, feedback.js, style.css
 ├── tests/                   # Offline unit & integration tests (unittest / pytest)
 ├── Dockerfile
@@ -58,6 +58,8 @@ python app.py
 
 ### Environment Variables
 - `RATELIMIT_STORAGE_URI` — Flask-Limiter storage backend (defaults to `memory://`; set a shared store like Redis for multi-worker Gunicorn).
+- `TRUST_PROXY_COUNT` — number of trusted reverse-proxy hops for `ProxyFix` (defaults to `0`).
+- `MAX_TRANSLATIONS_PER_REQUEST` — maximum translation keys accepted per `/api/translations/surah/<id>` request (defaults to `12`).
 - `QURAN_API_TIMEOUT` / `QURAN_API_RETRIES` — upstream request timeout (default `12s`) and retry count (default `2`).
 - `QF_CLIENT_ID`, `QF_CLIENT_SECRET`, `QF_ENV`, `QF_QIRAAT_ENABLED` — optional Quran Foundation OAuth2 integration.
 

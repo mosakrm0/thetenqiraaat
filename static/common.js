@@ -30,14 +30,31 @@ function applyTheme(theme) {
 }
 
 function initTheme() {
-  applyTheme(localStorage.getItem(THEME_KEY) || 'light');
+  let saved = 'light';
+  try {
+    saved = localStorage.getItem(THEME_KEY) || 'light';
+  } catch {}
+  applyTheme(saved);
 }
 
 function toggleTheme() {
   const now = document.documentElement.getAttribute('data-theme') || 'light';
   const next = now === 'dark' ? 'light' : 'dark';
-  localStorage.setItem(THEME_KEY, next);
+  try {
+    localStorage.setItem(THEME_KEY, next);
+  } catch {}
   applyTheme(next);
+}
+
+function normalizeArabicSearch(str) {
+  return String(str || '')
+    .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640\u00A0]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 }
 
 function toast(msg, durationMs = 2600) {
@@ -70,9 +87,13 @@ function createCache(prefix) {
   function _evictStorage() {
     const entries = [];
     const now = Date.now();
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(prefix)) {
+    const keys = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(prefix)) keys.push(k);
+      }
+      for (const k of keys) {
         try {
           const parsed = JSON.parse(localStorage.getItem(k));
           entries.push({ k, exp: parsed.exp });
@@ -80,24 +101,25 @@ function createCache(prefix) {
           localStorage.removeItem(k);
         }
       }
-    }
-    const valid = [];
-    for (const e of entries) {
-      if (e.exp <= now) localStorage.removeItem(e.k);
-      else valid.push(e);
-    }
-    if (valid.length > 10) {
-      valid.sort((a, b) => a.exp - b.exp);
-      const toRemove = Math.ceil(valid.length * 0.2);
-      for (let i = 0; i < toRemove; i++) localStorage.removeItem(valid[i].k);
-    }
+      const valid = [];
+      for (const e of entries) {
+        if (e.exp <= now) localStorage.removeItem(e.k);
+        else valid.push(e);
+      }
+      if (valid.length > 10) {
+        valid.sort((a, b) => a.exp - b.exp);
+        const toRemove = Math.ceil(valid.length * 0.2);
+        for (let i = 0; i < toRemove; i++) localStorage.removeItem(valid[i].k);
+      }
+    } catch {}
   }
 
-  function read(key) {
+  function read(key, { allowStale = false } = {}) {
     const now = Date.now();
     const mem = memCache.get(key);
     if (mem) {
       if (mem.exp > now) return { value: mem.value, fresh: true };
+      if (allowStale) return { value: mem.value, fresh: false };
       memCache.delete(key);
     }
     try {
@@ -107,6 +129,9 @@ function createCache(prefix) {
       if (parsed.exp > now) {
         memCache.set(key, parsed);
         return { value: parsed.value, fresh: true };
+      }
+      if (allowStale) {
+        return { value: parsed.value, fresh: false };
       }
       localStorage.removeItem(_key(key));
     } catch {}
@@ -149,7 +174,7 @@ async function fetchJsonWithRetry(url, { retries = 2, timeoutMs = 15000, backoff
 }
 
 async function getCachedJson(cache, { key, url, ttlMs, retries = 2 }) {
-  const cached = cache.read(key);
+  const cached = cache.read(key, { allowStale: true });
   if (cached?.fresh) return cached.value;
   try {
     const data = await fetchJsonWithRetry(url, { retries });
@@ -257,6 +282,7 @@ function initResponsiveShell() {
   window.Common = {
     escHtml,
     escAttr,
+    normalizeArabicSearch,
     initTheme,
     applyTheme,
     toggleTheme,

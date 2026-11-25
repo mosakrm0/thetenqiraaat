@@ -92,6 +92,33 @@ class TestAudioService(unittest.TestCase):
                 self.assertEqual(len(res['ayah_map']), 7, f"{q['key']} should have 7 ayahs for Fatiha")
                 self.assertTrue(res['ayah_map'][1].startswith('https://files.quranpedia.net/recitations/'))
 
+    def test_mp3quran_mode_hint_matches_moshaf_timing(self):
+        self.cache.set('mp3quran_riwayat_ar', [{'id': 9, 'name': 'قالون عن نافع'}], expire=3600)
+        self.cache.set('mp3quran_timing_read_ids', [999], expire=3600)
+        self.cache.set('mp3quran_reciters_9', [{
+            'id': 50,
+            'name': 'Reciter',
+            'moshaf': [{'id': 999, 'name': 'M', 'server': 'https://server8.mp3quran.net/x/', 'surah_total': 114, 'surah_list': ''}],
+        }], expire=3600)
+        recs = audio_svc.mp3quran_get_reciters_for_qiraa('qaloon', 1)
+        self.assertEqual(len(recs), 1)
+        self.assertTrue(recs[0]['has_timing'])
+        self.assertEqual(recs[0]['mode_hint'], 'timed-surah')
+
+    def test_resolve_specific_reciter_rejects_malformed_and_mismatched_ids(self):
+        for bad in ('qf_public:abc', 'qdc_chapter:abc', 'mp3quran:abc'):
+            self.assertIsNone(audio_svc._resolve_specific_reciter('hafs', 1, bad))
+        # warsh has qfPublicId=None, so qf_public:7 must be rejected
+        self.assertIsNone(audio_svc._resolve_specific_reciter('warsh', 1, 'qf_public:7'))
+
+    def test_qf_negative_cache_hits_on_empty_dict_and_none(self):
+        self.cache.set('qf_public_audio_7_1', {}, expire=3600)
+        self.cache.set('qf_choice_hafs_1', None, expire=3600)
+        with patch('services.audio.get_http_session') as mock_sess:
+            mock_sess.return_value.get.side_effect = AssertionError('Should hit negative cache')
+            self.assertEqual(audio_svc.qf_public_get_chapter_audio_map(1, 7), {})
+            self.assertIsNone(audio_svc.qf_pick_recitation_for_qiraa(mock_sess.return_value, 'hafs', 1))
+
 
 if __name__ == '__main__':
     unittest.main()

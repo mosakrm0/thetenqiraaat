@@ -10,6 +10,7 @@ from config import (
     REQUEST_TIMEOUT,
     TRANSLATIONS_CACHE_TTL_SEC,
 )
+from db import get_db_connection
 from services.audio import (
     everyayah_ayah_count_for_surah,
     everyayah_build_ayah_url,
@@ -18,6 +19,7 @@ from services.audio import (
 from services.http_client import get_cache, get_http_session
 
 logger = logging.getLogger(__name__)
+_SAFE_EDITION_RE = re.compile(r'^[a-zA-Z0-9._-]+$')
 
 
 def _everyayah_is_translation_track(name: str, subfolder: str) -> bool:
@@ -152,7 +154,7 @@ def alquran_translation_editions() -> list[dict]:
         if not isinstance(row, dict):
             continue
         identifier = row.get('identifier')
-        if not isinstance(identifier, str) or not identifier:
+        if not isinstance(identifier, str) or not identifier or not _SAFE_EDITION_RE.match(identifier):
             continue
         items.append({
             'key':         f'alquran:{identifier}',
@@ -188,7 +190,7 @@ def fawaz_translation_editions() -> list[dict]:
         if not isinstance(row, dict):
             continue
         name = row.get('name')
-        if not isinstance(name, str) or not name:
+        if not isinstance(name, str) or not name or not _SAFE_EDITION_RE.match(name):
             continue
         # Skip Arabic recitation datasets and duplicate -la / -lad transliteration variants
         if name.startswith('ara-') or name.endswith('-la') or name.endswith('-lad'):
@@ -231,11 +233,17 @@ def fetch_alquran_edition_ayahs(surah_id: int, edition: str) -> tuple[dict[int, 
         return {}, f'Invalid JSON: {exc}'
 
     ayah_map: dict[int, str] = {}
-    for item in payload.get('data', {}).get('ayahs', []):
-        verse = item.get('numberInSurah')
-        text = item.get('text')
-        if isinstance(verse, int) and isinstance(text, str):
-            ayah_map[verse] = text
+    if isinstance(payload, dict):
+        data = payload.get('data')
+        ayahs_list = data.get('ayahs') if isinstance(data, dict) else None
+        if isinstance(ayahs_list, list):
+            for item in ayahs_list:
+                if not isinstance(item, dict):
+                    continue
+                verse = item.get('numberInSurah')
+                text = item.get('text')
+                if isinstance(verse, int) and isinstance(text, str):
+                    ayah_map[verse] = text
     if not ayah_map:
         return {}, 'No ayahs returned from source'
     cache.set(cache_key, ayah_map, expire=TRANSLATIONS_CACHE_TTL_SEC)
@@ -261,15 +269,50 @@ def fetch_fawaz_edition_ayahs(surah_id: int, edition: str) -> tuple[dict[int, st
         return {}, f'Invalid JSON: {exc}'
 
     ayah_map: dict[int, str] = {}
-    for item in payload.get('chapter', []):
-        verse = item.get('verse')
-        text = item.get('text')
-        if isinstance(verse, int) and isinstance(text, str):
-            ayah_map[verse] = text
+    if isinstance(payload, dict):
+        chapter = payload.get('chapter')
+        if isinstance(chapter, list):
+            for item in chapter:
+                if not isinstance(item, dict):
+                    continue
+                verse = item.get('verse')
+                text = item.get('text')
+                if isinstance(verse, int) and isinstance(text, str):
+                    ayah_map[verse] = text
     if not ayah_map:
         return {}, 'No ayahs returned from source'
     cache.set(cache_key, ayah_map, expire=TRANSLATIONS_CACHE_TTL_SEC)
     return ayah_map, None
+
+
+def _norm_basmala_word(w: str) -> str:
+    s = re.sub(r'[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]', '', w)
+    return s.replace('ٱ', 'ا').replace('أ', 'ا').replace('إ', 'ا')
+
+
+def _fetch_local_hafs_ayahs(surah_id: int) -> dict[int, str]:
+    try:
+        conn = get_db_connection()
+        try:
+            rows = conn.execute(
+                "SELECT ayah, text FROM ayahs WHERE surah = ? AND qiraa = 'hafs' ORDER BY ayah",
+                (surah_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        return {}
+    out: dict[int, str] = {}
+    for r in rows:
+        a = int(r['ayah'])
+        txt = str(r['text'] or '').lstrip('\ufeff').strip()
+        if a == 1 and surah_id not in (1, 9):
+            words = txt.split()
+            if len(words) > 4 and [_norm_basmala_word(w) for w in words[:4]] == ['بسم', 'الله', 'الرحمن', 'الرحيم']:
+                txt = ' '.join(words[4:]).strip()
+        if txt:
+            out[a] = txt
+    return out
 
 
 def unified_translations_catalog() -> list[dict]:
@@ -277,6 +320,11 @@ def unified_translations_catalog() -> list[dict]:
     Return all available translations (AlQuran Cloud + Fawaz), tagging editions
     whose language has an EveryAyah audio track with `has_audio: True`.
     """
+    cache = get_cache()
+    cached_catalog = cache.get('unified_translations_catalog_v1')
+    if isinstance(cached_catalog, list) and cached_catalog:
+        return cached_catalog
+
     catalog: list[dict] = [{
         'key':             'hafs_ar_text',
         'source':          'alquran',
@@ -371,6 +419,8 @@ def unified_translations_catalog() -> list[dict]:
             str(x.get('name') or x.get('englishName') or '').lower(),
         ),
     )
+    if len(catalog) > 1:
+        cache.set('unified_translations_catalog_v1', catalog, expire=TRANSLATIONS_CACHE_TTL_SEC)
     return catalog
 
 
@@ -425,7 +475,10 @@ def fetch_translations_for_surah(surah_id: int, req_keys: list[str]) -> tuple[di
                 }, 0
 
         if key == 'hafs_ar_text':
-            ayahs, err = fetch_alquran_edition_ayahs(surah_id, 'quran-uthmani')
+            ayahs = _fetch_local_hafs_ayahs(surah_id)
+            err = None
+            if not ayahs:
+                ayahs, err = fetch_alquran_edition_ayahs(surah_id, 'quran-uthmani')
         elif source == 'alquran':
             ayahs, err = fetch_alquran_edition_ayahs(surah_id, str(meta.get('edition') or ''))
         elif source == 'fawaz':

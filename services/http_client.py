@@ -1,4 +1,6 @@
+import atexit
 import ipaddress
+import re
 import threading
 from urllib.parse import urlparse
 
@@ -12,6 +14,9 @@ from config import ALLOWED_AUDIO_HOSTS, CACHE_DIR, REQUEST_RETRIES
 _http_session: requests.Session | None = None
 _http_session_lock = threading.Lock()
 _cache = diskcache.Cache(str(CACHE_DIR))
+atexit.register(_cache.close)
+
+_MP3QURAN_SUBDOMAIN_RE = re.compile(r'^(?:server\d{1,3}|cdn|download|verse)\.mp3quran\.net$')
 
 
 def get_cache() -> diskcache.Cache:
@@ -42,9 +47,16 @@ def get_http_session() -> requests.Session:
 def is_allowed_audio_url(url: str) -> bool:
     try:
         parsed = urlparse(url)
+        port = parsed.port
     except Exception:
         return False
     if parsed.scheme != 'https':
+        return False
+    if parsed.username is not None or parsed.password is not None:
+        return False
+    if port not in (None, 443):
+        return False
+    if '..' in (parsed.path or '').split('/'):
         return False
     host = (parsed.hostname or '').lower().strip('.')
     if not host:
@@ -59,7 +71,7 @@ def is_allowed_audio_url(url: str) -> bool:
 
     if host in ALLOWED_AUDIO_HOSTS:
         return True
-    # Allow *.mp3quran.net subdomains (e.g., server6..server16, cdn, download)
-    if host.endswith('.mp3quran.net') and len(host) > len('.mp3quran.net'):
+    # Allow known *.mp3quran.net audio server subdomains (e.g., server6..server16, cdn, download)
+    if _MP3QURAN_SUBDOMAIN_RE.match(host):
         return True
     return False

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:wght@400;700&family=Cairo:wght@400;700&family=JetBrains+Mono:wght@400;700&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/thetruetruth/quran-data-kfgqpc@main/css/kfgqpc.font.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/thetruetruth/quran-data-kfgqpc@main/css/kfgqpc.font.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -65,9 +65,9 @@
         </div>
         <div class="range-wrap">
           <label for="r-start">من</label>
-          <input type="number" class="r-input" id="r-start" min="1" value="1">
+          <input type="number" class="r-input" id="r-start" min="1" step="1" value="1">
           <label for="r-end">إلى</label>
-          <input type="number" class="r-input" id="r-end" min="1" value="7">
+          <input type="number" class="r-input" id="r-end" min="1" step="1" value="7">
           <button class="btn-go v-btn v-btn-primary" type="button" onclick="loadContent()">عرض</button>
         </div>
         <div class="audio-opts-wrap">
@@ -90,9 +90,9 @@
       <div class="q-note">الروايات الثماني المتوفرة رقمياً تعرض نصها العثماني الكامل، أما بقية الروايات فتعرض نص حفص كبديل مؤقت مع إبراز أوجه القراءة وعدّ الآي المتوفرة.</div>
     </section>
 
-    <div id="content">
+    <main id="content">
       <div class="workspace-hdr">
-        <div class="tb-name" id="tb-name">اختر سورة للبدء</div>
+        <h1 class="tb-name" id="tb-name">اختر سورة للبدء</h1>
         <div class="tb-meta" id="tb-meta">اختر سورة من الفهرس أو استخدم الاختصارات السريعة أدناه</div>
       </div>
       <div class="empty-state v-window">
@@ -110,7 +110,7 @@
           </div>
         </div>
       </div>
-    </div>
+    </main>
   </div>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>

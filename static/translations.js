@@ -5,6 +5,7 @@
   const {
     escHtml,
     escAttr,
+    normalizeArabicSearch,
     initTheme,
     toast,
     fmtTime,
@@ -29,6 +30,7 @@
   let langFilter      = '';
   let audioOnly       = false;
   let pickerOpen      = false;
+  let loadTicket      = 0;
   let autoPlayEnabled = false;
   let playbackSpeed   = 1;
 
@@ -129,11 +131,14 @@
   function updateBar(pid, a) {
     const bar = document.getElementById(`pbar-${pid}`);
     const tim = document.getElementById(`ptim-${pid}`);
+    const trk = document.getElementById(`ptrk-${pid}`);
     if (!a || !bar || !tim) return;
     const dur = a.duration;
     const cur = a.currentTime;
     if (Number.isFinite(dur) && dur > 0) {
-      bar.style.width = `${Math.max(0, Math.min(100, (cur / dur) * 100))}%`;
+      const pct = Math.max(0, Math.min(100, (cur / dur) * 100));
+      bar.style.width = `${pct}%`;
+      if (trk) trk.setAttribute('aria-valuenow', String(Math.round(pct)));
     }
     tim.textContent = fmtTime(cur);
   }
@@ -149,16 +154,24 @@
 
   function stopAll() {
     Object.entries(audios).forEach(([pid, a]) => {
-      if (a && !a.paused) a.pause();
+      if (a) {
+        try {
+          a.pause();
+          a.removeAttribute('src');
+          a.load();
+          a._srcSet = false;
+        } catch {}
+      }
       setState(pid, 'idle');
     });
+    audios = {};
   }
 
   function playerHTML(pid, url, entryKey = '', ayahNum = 0) {
     if (!url) return '<div class="audio-player disabled">لا يتوفر صوت</div>';
     return `<div class="audio-player" data-pid="${escAttr(pid)}" data-url="${escAttr(url)}" data-ekey="${escAttr(entryKey)}" data-ayah="${ayahNum}">
       <button type="button" class="play-btn" id="pbtn-${escAttr(pid)}">تشغيل</button>
-      <div class="prog-track" id="ptrk-${escAttr(pid)}">
+      <div class="prog-track" id="ptrk-${escAttr(pid)}" role="slider" tabindex="0" aria-label="تقديم أو تأخير الصوت" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
         <div class="prog-rail"><div class="prog-bar" id="pbar-${escAttr(pid)}"></div></div>
       </div>
       <span class="time-lbl" id="ptim-${escAttr(pid)}">0:00</span>
@@ -238,6 +251,12 @@
   }
 
   document.addEventListener('click', (e) => {
+    const rmBtn = e.target.closest('.tr-sel-remove[data-remove-key]');
+    if (rmBtn) {
+      removeSelected(rmBtn.dataset.removeKey);
+      return;
+    }
+
     const btn = e.target.closest('.play-btn');
     if (btn) {
       e.stopPropagation();
@@ -263,16 +282,30 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && pickerOpen) {
       openPicker(false);
+      return;
     }
+    const trk = e.target.closest('.prog-track');
+    if (!trk) return;
+    const player = trk.closest('.audio-player');
+    const a = player ? audios[player.dataset.pid] : null;
+    if (!a || !Number.isFinite(a.duration) || a.duration <= 0) return;
+    let handled = true;
+    if (e.key === 'ArrowRight') a.currentTime = Math.min(a.duration, a.currentTime + 5);
+    else if (e.key === 'ArrowLeft') a.currentTime = Math.max(0, a.currentTime - 5);
+    else if (e.key === 'Home') a.currentTime = 0;
+    else if (e.key === 'End') a.currentTime = a.duration;
+    else handled = false;
+    if (handled) e.preventDefault();
   });
 
   function filterArr(q) {
     if (!q) return allSurahs;
+    const nq = normalizeArabicSearch(q);
     const qq = String(q).toLowerCase();
     return allSurahs.filter(s =>
-      String(s.name).includes(q) ||
+      normalizeArabicSearch(s.name).includes(nq) ||
       String(s.englishName || '').toLowerCase().includes(qq) ||
-      String(s.number).startsWith(q)
+      String(s.number).startsWith(String(q).trim())
     );
   }
 
@@ -392,10 +425,23 @@
         const label = `${languageLabel(item.language)} · ${item.name || item.englishName}`;
         return `<span class="tr-sel-pill">
           <span>${escHtml(label)}</span>
-          <button type="button" class="tr-sel-remove" onclick="removeSelected('${escAttr(item.key)}')" aria-label="إزالة ${escAttr(label)}">x</button>
+          <button type="button" class="tr-sel-remove" data-remove-key="${escAttr(item.key)}" aria-label="إزالة ${escAttr(label)}">x</button>
         </span>`;
       }).join('') +
       `<button type="button" class="v-btn" onclick="resetSelected()">افتراضي</button>`;
+  }
+
+  function renderEmptySelection() {
+    const content = document.getElementById('content');
+    if (!content) return;
+    stopAll();
+    content.innerHTML = `${workspaceHeaderMarkup()}<div class="empty-state v-window">
+      <div class="v-titlebar"><span>تنبيه</span><span class="mono">READY</span></div>
+      <div class="v-window-body">
+        <div class="empty-title">لم يتم اختيار أي ترجمة</div>
+        <div class="empty-sub">اختر ترجمة واحدة على الأقل من القائمة لعرض الآيات.</div>
+      </div>
+    </div>`;
   }
 
   function removeSelected(key) {
@@ -403,7 +449,10 @@
     renderSelectedBar();
     buildChips();
     syncUrlState();
-    if (curSurah && selected.size) loadContent();
+    if (curSurah) {
+      if (selected.size) loadContent();
+      else renderEmptySelection();
+    }
   }
 
   function resetSelected() {
@@ -482,7 +531,10 @@
         renderSelectedBar();
         buildChips();
         syncUrlState();
-        if (curSurah && selected.size) loadContent();
+        if (curSurah) {
+          if (selected.size) loadContent();
+          else renderEmptySelection();
+        }
       };
       wrap.appendChild(btn);
     });
@@ -557,6 +609,7 @@
     curSurah = allSurahs.find(s => s.number === num);
     if (!curSurah) return;
     closeSidebarOnMobile();
+    stopAll();
 
     const max = curSurah.numberOfAyahs;
     const sEl = document.getElementById('r-start');
@@ -584,10 +637,29 @@
   }
 
   function normalizeRange(maxAyah) {
-    const start = Math.max(1, Number(document.getElementById('r-start').value || 1));
-    const endInput = Number(document.getElementById('r-end').value || start);
+    const sEl = document.getElementById('r-start');
+    const eEl = document.getElementById('r-end');
+    const start = Math.max(1, Math.trunc(Number(sEl.value)) || 1);
+    const endInput = Math.trunc(Number(eEl.value)) || start;
     const end = Math.min(maxAyah, Math.max(start, endInput));
+    sEl.value = String(start);
+    eEl.value = String(end);
     return { start, end };
+  }
+
+  function orderedEntries(data) {
+    const out = [];
+    const seen = new Set();
+    for (const k of selected) {
+      if (data[k]) {
+        out.push(data[k]);
+        seen.add(k);
+      }
+    }
+    for (const [k, v] of Object.entries(data)) {
+      if (!seen.has(k) && v) out.push(v);
+    }
+    return out;
   }
 
   function buildEntryCard(entry, ayah) {
@@ -606,9 +678,10 @@
   }
 
   function renderMushafTranslations(data, start, end) {
+    const entries = orderedEntries(data);
     let html = `${workspaceHeaderMarkup()}<div class="mushaf-page"><div class="mushaf-body">`;
     for (let ayah = start; ayah <= end; ayah++) {
-      const cards = Object.values(data).map(entry => buildEntryCard(entry, ayah)).join('');
+      const cards = entries.map(entry => buildEntryCard(entry, ayah)).join('');
       html += `<section class="ayah-block">
         <div class="ayah-master"><span>الآية</span><span class="ayah-badge">${ayah}</span></div>
         <div class="cards-row">${cards}</div>
@@ -619,7 +692,7 @@
   }
 
   function renderCompareTranslations(data, start, end) {
-    const entries = Object.values(data);
+    const entries = orderedEntries(data);
     const cols = Math.min(entries.length || 1, 3);
     let html = `${workspaceHeaderMarkup()}<div class="compare-grid" data-cols="${cols}" style="--cmp-cols:${cols}">`;
 
@@ -632,18 +705,22 @@
         </div>
         <div class="cmp-body">`;
 
-      for (let ayah = start; ayah <= end; ayah++) {
-        const txt = entry.ayahs?.[ayah - 1]?.text || '(النص غير متاح)';
-        const dir = (entry.direction || 'ltr').toLowerCase() === 'rtl' ? 'rtl' : 'ltr';
-        const audioUrl = entry.ayah_audio_map ? entry.ayah_audio_map[ayah] : null;
-        const pid = `c_${(entry.key || entry.language || 'x').replace(/[^a-zA-Z0-9_]/g, '_')}_${ayah}`;
-        html += `<div class="cmp-ayah">
-          <div class="cmp-num">${ayah}</div>
-          <div style="flex:1;min-width:0">
-            <div class="cmp-text" dir="${dir}">${escHtml(txt)}</div>
-            <div style="margin-top:6px">${playerHTML(pid, audioUrl, entry.key || '', ayah)}</div>
-          </div>
-        </div>`;
+      if (entry.fetch_status === 'error') {
+        html += `<div class="cmp-ayah"><div style="flex:1;min-width:0"><div class="cmp-text">تعذر الجلب: ${escHtml(entry.error || '')}</div></div></div>`;
+      } else {
+        for (let ayah = start; ayah <= end; ayah++) {
+          const txt = entry.ayahs?.[ayah - 1]?.text || '(النص غير متاح)';
+          const dir = (entry.direction || 'ltr').toLowerCase() === 'rtl' ? 'rtl' : 'ltr';
+          const audioUrl = entry.ayah_audio_map ? entry.ayah_audio_map[ayah] : null;
+          const pid = `c_${(entry.key || entry.language || 'x').replace(/[^a-zA-Z0-9_]/g, '_')}_${ayah}`;
+          html += `<div class="cmp-ayah">
+            <div class="cmp-num">${ayah}</div>
+            <div style="flex:1;min-width:0">
+              <div class="cmp-text" dir="${dir}">${escHtml(txt)}</div>
+              <div style="margin-top:6px">${playerHTML(pid, audioUrl, entry.key || '', ayah)}</div>
+            </div>
+          </div>`;
+        }
       }
 
       html += '</div></div>';
@@ -671,7 +748,6 @@
       : renderMushafTranslations(data, start, end);
 
     stopAll();
-    audios = {};
     content.innerHTML = html;
   }
 
@@ -685,6 +761,8 @@
       return;
     }
     syncUrlState();
+    stopAll();
+    const ticket = ++loadTicket;
     document.getElementById('content').innerHTML = `${workspaceHeaderMarkup()}
       <div class="v-window" style="max-width:520px;margin:0 auto">
         <div class="v-titlebar"><span>تحميل البيانات</span><span class="mono">WAIT</span></div>
@@ -698,8 +776,10 @@
         url: `/api/translations/surah/${curSurah.number}?keys=${encodeURIComponent(keys.join(','))}`,
         ttlMs: 1000 * 60 * 60 * 6,
       });
+      if (ticket !== loadTicket) return;
       renderPayload(payload);
     } catch (err) {
+      if (ticket !== loadTicket) return;
       document.getElementById('content').innerHTML = `${workspaceHeaderMarkup()}
         <div class="empty-state v-window">
           <div class="v-titlebar"><span>خطأ</span><span class="mono">ERR</span></div>

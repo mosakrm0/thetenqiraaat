@@ -16,7 +16,12 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest
+          pip install pytest ruff pip-audit
+
+      - name: Lint & dependency audit
+        run: |
+          ruff check .
+          pip-audit -r requirements.txt
 
       - name: Run unit & integration tests
         run: pytest -v

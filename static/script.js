@@ -5,6 +5,7 @@
   const {
   escHtml,
   escAttr,
+  normalizeArabicSearch,
   initTheme,
   toast,
   fmtTime,
@@ -36,6 +37,7 @@ let selectedReciters     = {};
 let audios               = {};
 let resolvedAudioSources = {};
 let loadTicket           = 0;
+let reciterTickets       = {};
 let highlightDiffs       = true;
 let autoPlayEnabled      = false;
 let playbackSpeed        = 1;
@@ -57,6 +59,11 @@ let playbackSpeed        = 1;
   }
 
   await Promise.all([loadQiraat(), loadSurahs()]);
+  if (QIRAAT.length) {
+    const validKeys = new Set(QIRAAT.map(q => q.key));
+    const filtered = Array.from(selected).filter(k => validKeys.has(k));
+    selected = new Set(filtered.length ? filtered : ['hafs', 'warsh'].filter(k => validKeys.has(k)));
+  }
   buildGroups();
   syncQiraatBarToggle();
 
@@ -210,11 +217,12 @@ function renderList(list) {
 
 function filterArr(q) {
   if (!q) return allSurahs;
+  const nq = normalizeArabicSearch(q);
   const qq = q.toLowerCase();
   return allSurahs.filter(s =>
-    s.name.includes(q) ||
+    normalizeArabicSearch(s.name).includes(nq) ||
     (s.englishName || '').toLowerCase().includes(qq) ||
-    String(s.number).startsWith(q)
+    String(s.number).startsWith(q.trim())
   );
 }
 
@@ -282,13 +290,17 @@ function setPlaybackSpeed(val) {
 }
 
   // ── Arabic word diff highlighting vs Hafs ───────────────────────────────────
-  function _normToken(word) {
+  function _normDiffToken(word) {
     return String(word || '')
-      .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g, '')
-      .replace(/[\u0640\u00A0]/g, '')
-      .replace(/[أإآٱ]/g, 'ا')
-      .replace(/[ى]/g, 'ي')
-      .replace(/[٠-٩0-9]+/g, '')
+      .normalize('NFC')
+      .replace(/[\u06D6-\u06E0\u06E2-\u06EB\u06ED\u0640\u00A0\u200C\u200D٠-٩0-9۞۩]/g, '')
+      .replace(/\u06E1/g, '\u0652')
+      .replace(/\u08F0/g, '\u064B')
+      .replace(/\u08F1/g, '\u064C')
+      .replace(/\u08F2/g, '\u064D')
+      .replace(/ا[\u064E\u064F\u0650]?\u06EC/g, 'ا')
+      .replace(/ٱ/g, 'ا')
+      .replace(/([\u064B-\u0650\u0670])\u0651/g, '\u0651$1')
       .trim();
   }
 
@@ -298,15 +310,12 @@ function setPlaybackSpeed(val) {
     }
     const tokens = String(text || '').split(/\s+/).filter(Boolean);
     const hafsTokens = String(hafsText || '').split(/\s+/).filter(Boolean);
-    const hafsNormSet = new Set(hafsTokens.map(_normToken).filter(Boolean));
-    const hafsExactSet = new Set(hafsTokens);
+    const hafsDiffSet = new Set(hafsTokens.map(_normDiffToken).filter(Boolean));
 
     return tokens.map(tok => {
-      const norm = _normToken(tok);
-      // Skip pure verse numbers or pause/ornament symbols
+      const norm = _normDiffToken(tok);
       if (!norm) return escHtml(tok);
-      const differs = !hafsExactSet.has(tok) && (!hafsNormSet.has(norm) || hafsTokens.every(ht => _normToken(ht) === norm ? ht !== tok : true));
-      if (differs) {
+      if (!hafsDiffSet.has(norm)) {
         return `<span class="diff-word">${escHtml(tok)}</span>`;
       }
       return escHtml(tok);
@@ -344,9 +353,11 @@ async function fetchBackendAudioMap(qKey, surahNumber, reciterId = null) {
       audioMapCache.set(cKey, { exp: Date.now() + AUDIO_MAP_TTL, data });
       return data;
     }
-  } catch {}
-  audioMapCache.set(cKey, { exp: Date.now() + AUDIO_MAP_TTL, data: null });
-  return null;
+    audioMapCache.set(cKey, { exp: Date.now() + 60 * 1000, data: null });
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 async function resolveAudioSources(chosen, surahNumber) {
@@ -406,10 +417,12 @@ function buildDefaultAudioSources(chosen) {
 
 async function onReciterChange(qKey, newReciterId) {
   if (!curSurah) return;
+  const rTicket = (reciterTickets[qKey] = (reciterTickets[qKey] || 0) + 1);
   selectedReciters[qKey] = newReciterId;
   stopAll();
   const chosen = QIRAAT.filter(q => selected.has(q.key));
   const res = await fetchBackendAudioMap(qKey, curSurah.number, newReciterId);
+  if (rTicket !== reciterTickets[qKey]) return;
   const existingReciters = resolvedAudioSources[qKey]?.reciters || [];
 
   if (res?.available && res.mode === 'ayah' && res.ayah_map) {
@@ -430,10 +443,13 @@ async function onReciterChange(qKey, newReciterId) {
       reciter: res.reciter_name, reciters: existingReciters,
       url: res.surah_url,
     };
+  } else {
+    toast('تعذّر تحميل صوت هذا القارئ');
+    return;
   }
 
-  const start = +document.getElementById('r-start').value || 1;
-  const end = +document.getElementById('r-end').value || 7;
+  const start = Math.trunc(Number(document.getElementById('r-start').value)) || 1;
+  const end = Math.trunc(Number(document.getElementById('r-end').value)) || 7;
   if (window._lastRenderArgs) {
     const { textData, fallbackFlags, fetchMeta, variantsMap, countNotesMap } = window._lastRenderArgs;
     renderCurrentView(chosen, textData, start, end, resolvedAudioSources, fallbackFlags, fetchMeta, variantsMap, countNotesMap);
@@ -526,7 +542,7 @@ function buildCountNotesMarkup(notesList) {
 function buildReciterSelectMarkup(q, audio) {
   const list = audio?.reciters || [];
   if (list.length <= 1) return '';
-  return `<select class="reciter-select" onchange="onReciterChange('${escAttr(q.key)}', this.value)" aria-label="اختيار القارئ">
+  return `<select class="reciter-select" data-qkey="${escAttr(q.key)}" aria-label="اختيار القارئ">
     ${list.map(r => `<option value="${escAttr(r.id)}"${r.id === audio.reciterId ? ' selected' : ''}>${escHtml(r.name)}</option>`).join('')}
   </select>`;
 }
@@ -549,10 +565,17 @@ async function loadContent() {
   if (!curSurah) { toast('اختر سورة أولاً'); return; }
   if (!selected.size) { toast('اختر قراءة واحدة على الأقل'); return; }
 
-  const start = +document.getElementById('r-start').value || 1;
-  const end   = +document.getElementById('r-end').value   || 7;
+  const startEl = document.getElementById('r-start');
+  const endEl   = document.getElementById('r-end');
+  const start = Math.trunc(Number(startEl.value)) || 1;
+  const end   = Math.trunc(Number(endEl.value))   || 7;
   const max   = curSurah.numberOfAyahs;
-  if (start < 1 || end > max || start > end) { toast(`المدى يجب بين 1 و${max}`); return; }
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 1 || end > max || start > end) {
+    toast(`المدى يجب بين 1 و${max}`);
+    return;
+  }
+  startEl.value = String(start);
+  endEl.value = String(end);
 
   syncUrlState();
   stopAll();
@@ -751,7 +774,7 @@ function playerHTML(pid, url, qKey = '', ayahNum = 0, extraUrl = null) {
   const extraAttr = extraUrl ? ` data-extra-url="${escAttr(extraUrl)}"` : '';
   return `<div class="audio-player" data-pid="${escAttr(pid)}" data-url="${escAttr(url)}"${extraAttr} data-qkey="${escAttr(qKey)}" data-ayah="${ayahNum}">
     <button type="button" class="play-btn" id="pbtn-${escAttr(pid)}">تشغيل</button>
-    <div class="prog-track" id="ptrk-${escAttr(pid)}">
+    <div class="prog-track" id="ptrk-${escAttr(pid)}" role="slider" tabindex="0" aria-label="تقديم أو تأخير الصوت" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
       <div class="prog-rail"><div class="prog-bar" id="pbar-${escAttr(pid)}"></div></div>
     </div>
     <span class="time-lbl" id="ptim-${escAttr(pid)}">0:00</span>
@@ -761,7 +784,7 @@ function playerHTML(pid, url, qKey = '', ayahNum = 0, extraUrl = null) {
 function playerHTMLTimed(pid, qKey, ayahNum, surahUrl, startMs, endMs) {
   return `<div class="audio-player" data-pid="${escAttr(pid)}" data-url="${escAttr(surahUrl)}" data-qkey="${escAttr(qKey)}" data-ayah="${ayahNum}" data-start-ms="${startMs}" data-end-ms="${endMs}">
     <button type="button" class="play-btn" id="pbtn-${escAttr(pid)}">تشغيل</button>
-    <div class="prog-track" id="ptrk-${escAttr(pid)}">
+    <div class="prog-track" id="ptrk-${escAttr(pid)}" role="slider" tabindex="0" aria-label="تقديم أو تأخير الصوت" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
       <div class="prog-rail"><div class="prog-bar" id="pbar-${escAttr(pid)}"></div></div>
     </div>
     <span class="time-lbl" id="ptim-${escAttr(pid)}">0:00</span>
@@ -769,6 +792,37 @@ function playerHTMLTimed(pid, qKey, ayahNum, surahUrl, startMs, endMs) {
 }
 
 // ── global event delegation + playback ─────────────────────────────────────────
+document.addEventListener('change', (e) => {
+  const sel = e.target.closest('.reciter-select');
+  if (sel && sel.dataset.qkey) {
+    onReciterChange(sel.dataset.qkey, sel.value);
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  const trk = e.target.closest('.prog-track');
+  if (!trk) return;
+  const player = trk.closest('.audio-player');
+  const a = player ? audios[player.dataset.pid] : null;
+  if (!a) return;
+  let handled = true;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    const delta = e.key === 'ArrowRight' ? 5 : -5;
+    if (Number.isFinite(a._windowStartSec) && Number.isFinite(a._windowEndSec)) {
+      a.currentTime = Math.max(a._windowStartSec, Math.min(a._windowEndSec, a.currentTime + delta));
+    } else if (Number.isFinite(a.duration) && a.duration > 0) {
+      a.currentTime = Math.max(0, Math.min(a.duration, a.currentTime + delta));
+    }
+  } else if (e.key === 'Home') {
+    a.currentTime = Number.isFinite(a._windowStartSec) ? a._windowStartSec : 0;
+  } else if (e.key === 'End') {
+    if (Number.isFinite(a._windowEndSec)) a.currentTime = a._windowEndSec;
+    else if (Number.isFinite(a.duration) && a.duration > 0) a.currentTime = a.duration;
+  } else {
+    handled = false;
+  }
+  if (handled) e.preventDefault();
+});
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('.play-btn');
   if (btn) {
@@ -877,10 +931,21 @@ async function togglePlay(pid, rawUrl, { startMs = null, endMs = null, qKey = ''
           a._proxied = true;
           a.src = proxyUrl;
           a.playbackRate = playbackSpeed;
-          a.play().catch(() => {
-            toast('ملف الصوت غير متاح');
-            setState(pid, 'idle');
-          });
+          const startProxy = () => {
+            if (Number.isFinite(a._windowStartSec)) {
+              try { a.currentTime = a._windowStartSec; } catch {}
+            }
+            a.play().then(() => setState(pid, 'playing')).catch(() => {
+              toast('ملف الصوت غير متاح');
+              setState(pid, 'idle');
+            });
+          };
+          if (Number.isFinite(a._windowStartSec)) {
+            a.addEventListener('loadedmetadata', startProxy, { once: true });
+            a.load();
+          } else {
+            startProxy();
+          }
           return;
         }
       }
@@ -905,7 +970,7 @@ async function togglePlay(pid, rawUrl, { startMs = null, endMs = null, qKey = ''
 
   if (a.paused) {
     setState(pid, 'loading');
-    const playAtWindow = () => {
+    const seekToWindow = () => {
       if (Number.isFinite(a._windowStartSec)) {
         try {
           if (a.currentTime < a._windowStartSec || a.currentTime >= a._windowEndSec) {
@@ -913,19 +978,17 @@ async function togglePlay(pid, rawUrl, { startMs = null, endMs = null, qKey = ''
           }
         } catch {}
       }
-      a.play().then(() => setState(pid, 'playing')).catch(err => {
-        console.error('Audio play error:', err);
-        setState(pid, 'idle');
-        toast('تعذّر تشغيل الصوت');
-      });
     };
-
     if (Number.isFinite(a._windowStartSec) && a.readyState < 1) {
-      a.addEventListener('loadedmetadata', () => playAtWindow(), { once: true });
-      a.load();
+      a.addEventListener('loadedmetadata', seekToWindow, { once: true });
     } else {
-      playAtWindow();
+      seekToWindow();
     }
+    a.play().then(() => setState(pid, 'playing')).catch(err => {
+      console.error('Audio play error:', err);
+      setState(pid, 'idle');
+      toast('تعذّر تشغيل الصوت');
+    });
   } else {
     a.pause();
     setState(pid, 'idle');
@@ -942,17 +1005,22 @@ function setState(pid, state) {
 function updateBar(pid, a) {
   const bar = document.getElementById(`pbar-${pid}`);
   const tim = document.getElementById(`ptim-${pid}`);
+  const trk = document.getElementById(`ptrk-${pid}`);
   if (!bar) return;
 
   if (Number.isFinite(a._windowStartSec) && Number.isFinite(a._windowEndSec)) {
     const winDur = Math.max(0.1, a._windowEndSec - a._windowStartSec);
     const elapsed = Math.max(0, a.currentTime - a._windowStartSec);
-    bar.style.width = `${Math.min(100, (elapsed / winDur) * 100)}%`;
+    const pct = Math.min(100, (elapsed / winDur) * 100);
+    bar.style.width = `${pct}%`;
+    if (trk) trk.setAttribute('aria-valuenow', String(Math.round(pct)));
     if (tim) tim.textContent = fmtTime(elapsed);
     return;
   }
 
-  bar.style.width = `${a.duration ? (a.currentTime / a.duration) * 100 : 0}%`;
+  const pct = a.duration ? (a.currentTime / a.duration) * 100 : 0;
+  bar.style.width = `${pct}%`;
+  if (trk) trk.setAttribute('aria-valuenow', String(Math.round(pct)));
   if (tim) tim.textContent = fmtTime(a.currentTime);
 }
 
