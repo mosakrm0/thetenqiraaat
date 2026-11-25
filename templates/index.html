@@ -6,34 +6,83 @@
 <title>القراءات العشر والترجمات القرآنية</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:wght@400;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:wght@400;700&family=Cairo:wght@400;700&family=JetBrains+Mono:wght@400;700&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
+<body class="vintage-landing-body">
+<div class="sys-status-bar">
+  <span>النظام جاهز · القراءات العشر المتواترة · 114 سورة · 20 رواية</span>
+  <a href="/feedback" class="sys-status-link">تواصل واقتراحات</a>
+</div>
+
+<header class="os-topbar">
+  <div class="os-brand">
+    <span class="os-brand-badge">QIRAAT-OS</span>
+    <span class="os-brand-title">مقارنة القراءات العشر</span>
+  </div>
+  <nav class="tabs" aria-label="التنقل الرئيسي">
+    <a class="tab active" href="/">الرئيسية</a>
+    <a class="tab" href="/readings">القراءات</a>
+    <a class="tab" href="/translations">الترجمات</a>
+    <a class="tab" href="/feedback">تواصل</a>
+  </nav>
+  <button class="v-btn" id="landing-theme-toggle" type="button" onclick="toggleTheme()">النمط الداكن</button>
+</header>
+
 <main class="landing-wrap">
-  <header class="hero">
-    <button class="landing-theme-toggle" id="landing-theme-toggle" type="button" onclick="toggleTheme()" aria-label="الوضع الداكن" title="الوضع الداكن">🌙</button>
-    <h1>اختر تجربة المقارنة</h1>
-    <p class="hero-sub">مقارنة القراءات العشر المتواترة والترجمات القرآنية آية بآية مع التلاوات الصوتية.</p>
-  </header>
-
-  <section class="choice-grid" aria-label="خيارات المقارنة">
-    <a class="choice-card" href="/readings">
-      <h2>مقارنة القراءات العشر</h2>
-      <p>قارن الروايات العشرين للقراءات العشر آية بآية، مع الخطوط العثمانية المعتمدة من مجمع الملك فهد، وإبراز الفروق، وبيان أوجه الفرش والأصول وعدّ الآي، وتشغيل التلاوات آية بآية.</p>
-      <span class="choice-cta">دخول قسم القراءات ←</span>
-    </a>
-
-    <a class="choice-card" href="/translations">
-      <h2>مقارنة الترجمات</h2>
-      <p>قارن عشرات الترجمات القرآنية بمختلف اللغات بشكل منظم آية بآية، مع إمكانية البحث والتصفية وتشغيل الترجمات الصوتية المتوفرة.</p>
-      <span class="choice-cta">دخول قسم الترجمات ←</span>
-    </a>
+  <section class="workspace-hdr">
+    <h1>مقارنة القراءات العشر والترجمات القرآنية</h1>
+    <p class="hero-sub">منصة كلاسيكية سريعة لمقارنة الروايات العشرين والترجمات آية بآية مع التلاوات الصوتية.</p>
   </section>
 
-  <footer class="landing-foot">
-    <a href="/feedback">تواصل واقتراحات</a>
-  </footer>
+  <section class="metrics-row" aria-label="إحصائيات النظام">
+    <div class="metric-card">
+      <div class="metric-label">السور المتاحة</div>
+      <div class="metric-val mono">114</div>
+      <div class="metric-sub">فهرس محلي فوري</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">الروايات العشر</div>
+      <div class="metric-val mono">20</div>
+      <div class="metric-sub">عبر الأئمة العشرة</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">مصاحف كاملة</div>
+      <div class="metric-val mono">8</div>
+      <div class="metric-sub">خطوط مجمع الملك فهد</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">الترجمات</div>
+      <div class="metric-val mono">100+</div>
+      <div class="metric-sub">نصية وصوتية</div>
+    </div>
+  </section>
+
+  <section class="choice-grid" aria-label="خيارات المقارنة">
+    <a class="choice-card v-window" href="/readings">
+      <div class="v-titlebar">
+        <span>مقارنة القراءات العشر</span>
+        <span class="mono">WIN-01</span>
+      </div>
+      <div class="v-window-body">
+        <h2>مقارنة القراءات العشر</h2>
+        <p>قارن الروايات العشرين للقراءات العشر آية بآية، مع الخطوط العثمانية المعتمدة من مجمع الملك فهد، وإبراز الفروق، وبيان أوجه الفرش والأصول وعدّ الآي، وتشغيل التلاوات آية بآية.</p>
+        <span class="v-btn v-btn-primary choice-cta">فتح القسم</span>
+      </div>
+    </a>
+
+    <a class="choice-card v-window" href="/translations">
+      <div class="v-titlebar">
+        <span>مقارنة الترجمات</span>
+        <span class="mono">WIN-02</span>
+      </div>
+      <div class="v-window-body">
+        <h2>مقارنة الترجمات</h2>
+        <p>قارن عشرات الترجمات القرآنية بمختلف اللغات بشكل منظم آية بآية، مع إمكانية البحث والتصفية وتشغيل الترجمات الصوتية المتوفرة.</p>
+        <span class="v-btn v-btn-primary choice-cta">فتح القسم</span>
+      </div>
+    </a>
+  </section>
 </main>
 <script src="/static/common.js"></script>
 <script>Common.initTheme();</script>

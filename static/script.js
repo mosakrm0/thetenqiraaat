@@ -1,6 +1,8 @@
 // script.js — Readings comparison page
+(function () {
+  'use strict';
 
-const {
+  const {
   escHtml,
   escAttr,
   initTheme,
@@ -13,8 +15,7 @@ const {
   buildProxyAudioUrl,
 } = window.Common;
 
-const API_BASE      = 'https://api.alquran.cloud/v1';
-const SURAH_LIST_TTL = 1000 * 60 * 60 * 12;
+const SURAH_LIST_TTL = 1000 * 60 * 60 * 24;
 const EDITION_TTL    = 1000 * 60 * 60 * 6;
 const AUDIO_MAP_TTL  = 1000 * 60 * 60 * 6;
 
@@ -28,7 +29,7 @@ let allSurahs            = [];
 let curSurah             = null;
 let activeTab            = 'mushaf';
 let selected             = new Set(['hafs', 'warsh']);
-let selectedReciters     = {}; // { qKey: reciter_id }
+let selectedReciters     = {};
 let audios               = {};
 let resolvedAudioSources = {};
 let loadTicket           = 0;
@@ -155,17 +156,11 @@ function applyPreset(mode) {
   } else if (mode === 'kfgqpc') {
     selected = new Set(QIRAAT.filter(q => q.textTier === 'kfgqpc_full' || q.textTier === 'full').map(q => q.key));
   } else if (mode === 'ten') {
-    const seenImam = new Set();
     const picks = [];
-    // Prefer Hafs for Asim and one primary riwaya per Imam
     const preferred = ['qaloon', 'bazzi', 'douri', 'hisham', 'hafs', 'khalaf_hamzah', 'harith', 'wardan', 'ruways', 'ishaq'];
     preferred.forEach(k => {
       const q = QIRAAT.find(x => x.key === k);
-      if (q) {
-        selected.add(q.key);
-        seenImam.add(q.imamKey);
-        picks.push(q.key);
-      }
+      if (q) picks.push(q.key);
     });
     selected = new Set(picks);
   }
@@ -174,24 +169,39 @@ function applyPreset(mode) {
   if (curSurah && selected.size) loadContent();
 }
 
-// ── surah list ─────────────────────────────────────────────────────────────────
+// ── surah list (SSR hydrated or local /api/surahs) ─────────────────────────────
 async function loadSurahs() {
+  const el = document.getElementById('surah-list');
+  if (Array.isArray(window.__INITIAL_SURAHS__) && window.__INITIAL_SURAHS__.length) {
+    allSurahs = window.__INITIAL_SURAHS__;
+    renderList(allSurahs);
+    return;
+  }
   try {
-    const d = await getCachedJson(cache, { key: 'surah-list', url: `${API_BASE}/surah`, ttlMs: SURAH_LIST_TTL, retries: 3 });
+    const d = await getCachedJson(cache, { key: 'surah-list-local-v1', url: '/api/surahs', ttlMs: SURAH_LIST_TTL, retries: 2 });
     allSurahs = d.data || [];
     renderList(allSurahs);
-  } catch { toast('تعذّر تحميل السور'); }
+  } catch {
+    if (el) {
+      el.innerHTML = `<div class="loader">
+        <div class="loader-txt">تعذّر تحميل فهرس السور</div>
+        <button type="button" class="v-btn" style="margin-top:8px" onclick="loadSurahs()">إعادة المحاولة</button>
+      </div>`;
+    }
+    toast('تعذّر تحميل السور');
+  }
 }
 
 function renderList(list) {
   const el = document.getElementById('surah-list');
+  if (!el) return;
   el.innerHTML = list.length
-    ? list.map(s => `<div class="s-item${curSurah?.number === s.number ? ' active' : ''}" onclick="pickSurah(${s.number})">
-        <div class="s-num">${s.number}</div>
-        <div class="s-name">${escHtml(s.name)}</div>
-        <div class="s-count">${s.numberOfAyahs} آية</div>
-      </div>`).join('')
-    : '<div style="text-align:center;padding:20px;color:var(--txt2)">لا نتائج</div>';
+    ? list.map(s => `<button type="button" class="s-item${curSurah?.number === s.number ? ' active' : ''}" onclick="pickSurah(${s.number})">
+        <span class="s-num">${s.number}</span>
+        <span class="s-name">${escHtml(s.name)}</span>
+        <span class="s-count">${s.numberOfAyahs}</span>
+      </button>`).join('')
+    : '<div class="loader"><div class="loader-txt">لا نتائج</div></div>';
 }
 
 function filterArr(q) {
@@ -220,9 +230,6 @@ async function pickSurah(num, rangeOverride = null) {
   startEl.value = rangeOverride?.start ? Math.max(1, Math.min(max, rangeOverride.start)) : 1;
   endEl.value = rangeOverride?.end ? Math.max(Number(startEl.value), Math.min(max, rangeOverride.end)) : Math.min(max, 7);
 
-  document.getElementById('tb-name').textContent = curSurah.name;
-  document.getElementById('tb-meta').textContent =
-    `${curSurah.englishName} · ${curSurah.revelationType === 'Meccan' ? 'مكية' : 'مدنية'} · ${max} آية`;
   renderList(filterArr(document.getElementById('sb-q').value));
   await loadContent();
 }
@@ -290,7 +297,6 @@ function renderAyahTextWithDiff(text, hafsText, qKey) {
 
   return tokens.map(tok => {
     const norm = _normToken(tok);
-    // Highlight if neither exact token nor skeleton matches Hafs, or if exact diacritics differ on a non-trivial word
     const differs = !hafsExactSet.has(tok) && (!norm || !hafsNormSet.has(norm) || hafsTokens.every(ht => _normToken(ht) === norm ? ht !== tok : true));
     if (differs && norm.length > 0) {
       return `<span class="diff-word">${escHtml(tok)}</span>`;
@@ -427,13 +433,22 @@ async function onReciterChange(qKey, newReciterId) {
 }
 
 // ── rendering helpers ──────────────────────────────────────────────────────────
+function workspaceHeaderMarkup() {
+  if (!curSurah) return '';
+  const rev = curSurah.revelationType === 'Meccan' ? 'مكية' : 'مدنية';
+  return `<div class="workspace-hdr">
+    <div class="tb-name">${escHtml(curSurah.name)}</div>
+    <div class="tb-meta">${escHtml(curSurah.englishName)} · ${rev} · ${curSurah.numberOfAyahs} آية · ${selected.size} روايات محددة</div>
+  </div>`;
+}
+
 function textTierBadge(q, textState) {
   if (textState?.status === 'error') {
     const tip = textState.error ? ` title="${escAttr(textState.error)}"` : '';
-    return `<span class="fallback-badge" style="background:#8a2f2f;color:#fff"${tip}>تعذّر جلب النص</span>`;
+    return `<span class="fallback-badge" style="background:var(--danger);color:#fff"${tip}>تعذّر جلب النص</span>`;
   }
   if (textState?.status === 'unavailable') {
-    return '<span class="fallback-badge" style="background:#646464;color:#fff">النص غير متاح</span>';
+    return '<span class="fallback-badge" style="background:var(--bevel-mid);color:#fff">النص غير متاح</span>';
   }
   if (q.textTier === 'kfgqpc_full') {
     return '<span class="tier-badge tier-full" title="نص عثماني مخصص من مجمع الملك فهد">مجمع الملك فهد</span>';
@@ -458,7 +473,7 @@ function buildAudioMarkup(audio, pid, qKey, ayahNum) {
     return playerHTMLTimed(pid, qKey, ayahNum, audio.surahUrl, t.start_ms, t.end_ms);
   }
   if (audio.mode === 'surah') {
-    return '<div class="audio-player disabled">الصوت متاح كاملًا أعلى الصفحة ☝️</div>';
+    return '<div class="audio-player disabled">الصوت متاح كاملًا أعلى الصفحة</div>';
   }
   return '<div class="audio-player disabled">لا يتوفر صوت لهذه القراءة حالياً</div>';
 }
@@ -469,7 +484,7 @@ function buildVariantsMarkup(variantsList) {
     <div class="qv-title">أوجه القراءة في هذه الآية:</div>
     ${variantsList.map(v => `
       <div class="qv-item">
-        ${v.hafs_word ? `<span class="qv-hafs">${escHtml(v.hafs_word)}</span> ← ` : ''}
+        ${v.hafs_word ? `<span class="qv-hafs">${escHtml(v.hafs_word)}</span> - ` : ''}
         <span class="qv-var">${escHtml(v.variant_text)}</span>
         <span class="qv-rule">${v.rule_type === 'usul' ? 'أصول' : 'فرش'}</span>
         ${v.note ? `<div class="qv-note">${escHtml(v.note)}</div>` : ''}
@@ -481,7 +496,7 @@ function buildVariantsMarkup(variantsList) {
 function buildCountNotesMarkup(notesList) {
   if (!Array.isArray(notesList) || !notesList.length) return '';
   return `<div class="count-notes-wrap">
-    ${notesList.map(n => `<span class="count-note-badge" title="${escAttr(n.note || '')}">🔢 ${escHtml(n.note || n.anchor_word || 'اختلاف عدّ الآي')}</span>`).join('')}
+    ${notesList.map(n => `<span class="count-note-badge" title="${escAttr(n.note || '')}">عدّ الآي: ${escHtml(n.note || n.anchor_word || 'اختلاف عدّ الآي')}</span>`).join('')}
   </div>`;
 }
 
@@ -518,11 +533,13 @@ async function loadContent() {
 
   syncUrlState();
   stopAll();
-  document.getElementById('content').innerHTML =
-    '<div class="loader"><div class="loader-ring"></div><div class="loader-txt">جاري تحميل القراءات...</div></div>';
+  document.getElementById('content').innerHTML = `${workspaceHeaderMarkup()}
+    <div class="v-window" style="max-width:520px;margin:0 auto">
+      <div class="v-titlebar"><span>تحميل البيانات</span><span class="mono">WAIT</span></div>
+      <div class="loader"><div class="loader-ring"></div><div class="loader-txt">جاري تحميل القراءات...</div></div>
+    </div>`;
 
   const ticket   = ++loadTicket;
-  // Always request hafs too so diff highlighting has a baseline
   const chosen   = QIRAAT.filter(q => selected.has(q.key));
   const reqKeys  = Array.from(new Set(['hafs', ...chosen.map(q => q.key)]));
   const textData = {}, fallbackFlags = {}, fetchMeta = {}, variantsMap = {}, countNotesMap = {};
@@ -548,7 +565,17 @@ async function loadContent() {
     }
   } catch (err) {
     console.error(err);
+    if (ticket !== loadTicket) return;
+    document.getElementById('content').innerHTML = `${workspaceHeaderMarkup()}
+      <div class="empty-state v-window">
+        <div class="v-titlebar"><span>خطأ في الاتصال</span><span class="mono">ERR</span></div>
+        <div class="v-window-body">
+          <div class="empty-title">تعذّر تحميل النص من الخادم</div>
+          <button type="button" class="v-btn v-btn-primary" onclick="loadContent()">إعادة المحاولة</button>
+        </div>
+      </div>`;
     toast('تعذّر تحميل النص من الخادم');
+    return;
   }
 
   if (ticket !== loadTicket) return;
@@ -581,12 +608,12 @@ function renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags,
   const showB = curSurah.number !== 9;
   const isF   = curSurah.number === 1;
 
-  let h = `<div class="mushaf-page">
+  let h = `${workspaceHeaderMarkup()}<div class="mushaf-page">
     <div class="mushaf-hdr">
-      <span class="orn r">❧</span><span class="orn l">❧</span>
       ${showB && !isF ? '<span class="basmala">بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ</span>' : ''}
       <div class="mushaf-sname">${escHtml(curSurah.name)}</div>
-      <div class="mushaf-smeta">${escHtml(curSurah.englishName)} · ${curSurah.revelationType === 'Meccan' ? 'مكية' : 'مدنية'} · ${curSurah.numberOfAyahs} آية</div>`;
+      <div class="mushaf-smeta">${escHtml(curSurah.englishName)} · ${curSurah.revelationType === 'Meccan' ? 'مكية' : 'مدنية'} · ${curSurah.numberOfAyahs} آية</div>
+    </div>`;
 
   const surahModeQiraat = chosen.filter(q => audioSources[q.key]?.mode === 'surah');
   if (surahModeQiraat.length) {
@@ -594,22 +621,21 @@ function renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags,
     surahModeQiraat.forEach(q => {
       const audio = audioSources[q.key];
       h += `<div class="sura-audio-item">
-        <span class="sa-label" style="color:${escAttr(q.color)}">${escHtml(q.displayName || q.rawiName)} (${escHtml(audio.reciter)}):</span>
+        <span class="sa-label">${escHtml(q.displayName || q.rawiName)} (${escHtml(audio.reciter)}):</span>
         ${buildReciterSelectMarkup(q, audio)}
         ${playerHTML(`sura_${q.key}_${curSurah.number}`, audio.url, q.key, 0)}
       </div>`;
     });
     h += `</div>`;
   }
-  h += `</div><div class="mushaf-body">`;
+  h += `<div class="mushaf-body">`;
 
   for (let i = start; i <= end; i++) {
-    const idx      = i - 1;
-    const delay    = Math.min((i - start) * 40, 400);
-    const hafsTxt  = textData.hafs?.[idx]?.text || '';
+    const idx     = i - 1;
+    const hafsTxt = textData.hafs?.[idx]?.text || '';
 
-    h += `<div class="ayah-block" style="animation-delay:${delay}ms">
-      <div class="ayah-master"><span class="ayah-badge">${i}</span></div>
+    h += `<div class="ayah-block">
+      <div class="ayah-master"><span>الآية</span><span class="ayah-badge">${i}</span></div>
       <div class="cards-row">`;
 
     chosen.forEach(q => {
@@ -641,7 +667,7 @@ function renderMushaf(chosen, textData, start, end, audioSources, fallbackFlags,
 // ── compare view ───────────────────────────────────────────────────────────────
 function renderCompare(chosen, textData, start, end, audioSources, fallbackFlags, fetchMeta = {}, variantsMap = {}, countNotesMap = {}) {
   const cols = Math.min(chosen.length || 1, 3);
-  let h = `<div class="compare-grid" style="grid-template-columns:repeat(${cols},1fr)">`;
+  let h = `${workspaceHeaderMarkup()}<div class="compare-grid" style="grid-template-columns:repeat(${cols},1fr)">`;
 
   chosen.forEach(q => {
     const audio      = audioSources[q.key] || { mode: 'none', reciter: q.rawiName };
@@ -692,7 +718,7 @@ function renderCompare(chosen, textData, start, end, audioSources, fallbackFlags
 function playerHTML(pid, url, qKey = '', ayahNum = 0) {
   if (!url) return '<div class="audio-player disabled">لا يتوفر صوت مطابق لهذه القراءة عبر المصدر الحالي</div>';
   return `<div class="audio-player" data-pid="${escAttr(pid)}" data-url="${escAttr(url)}" data-qkey="${escAttr(qKey)}" data-ayah="${ayahNum}">
-    <button class="play-btn" id="pbtn-${escAttr(pid)}">▶</button>
+    <button type="button" class="play-btn" id="pbtn-${escAttr(pid)}">تشغيل</button>
     <div class="prog-track" id="ptrk-${escAttr(pid)}">
       <div class="prog-rail"><div class="prog-bar" id="pbar-${escAttr(pid)}"></div></div>
     </div>
@@ -702,7 +728,7 @@ function playerHTML(pid, url, qKey = '', ayahNum = 0) {
 
 function playerHTMLTimed(pid, qKey, ayahNum, surahUrl, startMs, endMs) {
   return `<div class="audio-player" data-pid="${escAttr(pid)}" data-url="${escAttr(surahUrl)}" data-qkey="${escAttr(qKey)}" data-ayah="${ayahNum}" data-start-ms="${startMs}" data-end-ms="${endMs}">
-    <button class="play-btn" id="pbtn-${escAttr(pid)}">▶</button>
+    <button type="button" class="play-btn" id="pbtn-${escAttr(pid)}">تشغيل</button>
     <div class="prog-track" id="ptrk-${escAttr(pid)}">
       <div class="prog-rail"><div class="prog-bar" id="pbar-${escAttr(pid)}"></div></div>
     </div>
@@ -845,7 +871,7 @@ function setState(pid, state) {
   const btn = document.getElementById(`pbtn-${pid}`);
   if (!btn) return;
   btn.className = `play-btn${state === 'playing' ? ' is-playing' : state === 'loading' ? ' is-loading' : ''}`;
-  btn.textContent = state === 'playing' ? '⏸' : state === 'loading' ? '…' : '▶';
+  btn.textContent = state === 'playing' ? 'إيقاف' : state === 'loading' ? 'جارٍ...' : 'تشغيل';
 }
 
 function updateBar(pid, a) {
@@ -899,10 +925,12 @@ window.toggleSB = toggleSB;
 window.toggleQiraatBar = toggleQiraatBar;
 window.filterSurahs = filterSurahs;
 window.pickSurah = pickSurah;
+window.loadSurahs = loadSurahs;
 window.loadContent = loadContent;
 window.switchTab = switchTab;
 window.applyPreset = applyPreset;
 window.toggleDiffHighlight = toggleDiffHighlight;
-window.setAutoPlay = setAutoPlay;
-window.setPlaybackSpeed = setPlaybackSpeed;
-window.onReciterChange = onReciterChange;
+  window.setAutoPlay = setAutoPlay;
+  window.setPlaybackSpeed = setPlaybackSpeed;
+  window.onReciterChange = onReciterChange;
+})();

@@ -20,4 +20,4 @@ COPY static ./static
 
 EXPOSE 7860
 
-CMD ["sh", "-c", "python -c 'from app import init_db; init_db()' && exec gunicorn -w 4 -b 0.0.0.0:${PORT:-7860} app:app"]
+CMD ["sh", "-c", "python -c 'from app import init_db; init_db()' && exec gunicorn -w 4 --threads 2 --timeout 60 -b 0.0.0.0:${PORT:-7860} app:app"]

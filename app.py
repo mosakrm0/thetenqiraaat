@@ -1,3 +1,4 @@
+import json
 import logging
 
 import requests
@@ -7,6 +8,7 @@ from flask_limiter.util import get_remote_address
 
 from config import (
     ALLOWED_AUDIO_HOSTS,
+    DATA_DIR,
     DB_PATH,
     IMAMS,
     KFGQPC_JSON_URLS,
@@ -70,12 +72,12 @@ def home_page():
 
 @app.route('/readings')
 def readings_page():
-    return render_template('readings.html')
+    return render_template('readings.html', surahs=_load_surahs_list())
 
 
 @app.route('/translations')
 def translations_page():
-    return render_template('translations.html')
+    return render_template('translations.html', surahs=_load_surahs_list())
 
 
 @app.route('/feedback')
@@ -83,7 +85,25 @@ def feedback_page():
     return render_template('feedback.html')
 
 
+_SURAHS_CACHE: list[dict] | None = None
+
+
+def _load_surahs_list() -> list[dict]:
+    global _SURAHS_CACHE
+    if _SURAHS_CACHE is not None:
+        return _SURAHS_CACHE
+    path = DATA_DIR / 'surahs.json'
+    _SURAHS_CACHE = json.loads(path.read_text(encoding='utf-8'))
+    return _SURAHS_CACHE
+
+
 # ── qiraat API ─────────────────────────────────────────────────────────────────
+@app.route('/api/surahs')
+def get_surahs():
+    """Return all 114 canonical Surahs locally with zero external network dependency."""
+    return jsonify({'data': _load_surahs_list()})
+
+
 @app.route('/api/qiraat')
 def get_qiraat():
     """Expose the canonical QIRAAT list (all 20 riwayat) so the frontend stays in sync."""

@@ -1,6 +1,8 @@
 // common.js — shared utilities for Thetenqiraaat
+(function () {
+  'use strict';
 
-const THEME_KEY = 'qiraat-theme';
+  const THEME_KEY = 'qiraat-theme';
 
 function escHtml(v) {
   return String(v ?? '')
@@ -21,8 +23,8 @@ function applyTheme(theme) {
   const btn = document.getElementById('theme-toggle') || document.getElementById('landing-theme-toggle');
   if (btn) {
     const isLight = safe === 'light';
-    btn.textContent = isLight ? '🌙' : '☀️';
-    btn.title = isLight ? 'التحويل للوضع الداكن' : 'التحويل للوضع الفاتح';
+    btn.textContent = isLight ? 'النمط الداكن' : 'النمط الكلاسيكي';
+    btn.title = isLight ? 'التحويل للنمط الداكن' : 'التحويل للنمط الكلاسيكي';
     btn.setAttribute('aria-label', btn.title);
   }
 }
@@ -181,18 +183,19 @@ function buildProxyAudioUrl(url) {
   return `/api/audio-proxy?url=${encodeURIComponent(url)}`;
 }
 
-window.Common = {
-  escHtml,
-  escAttr,
-  initTheme,
-  applyTheme,
-  toggleTheme,
-  toast,
-  fmtTime,
-  createCache,
-  fetchJsonWithRetry,
-  getCachedJson,
-  normalizeAudioUrl,
-  buildProxyAudioUrl,
-};
-window.toggleTheme = toggleTheme;
+  window.Common = {
+    escHtml,
+    escAttr,
+    initTheme,
+    applyTheme,
+    toggleTheme,
+    toast,
+    fmtTime,
+    createCache,
+    fetchJsonWithRetry,
+    getCachedJson,
+    normalizeAudioUrl,
+    buildProxyAudioUrl,
+  };
+  window.toggleTheme = toggleTheme;
+})();

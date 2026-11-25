@@ -288,33 +288,41 @@ def unified_translations_catalog() -> list[dict]:
     }]
 
     everyayah_by_lang: dict[str, dict] = {}
-    try:
+    all_editions: list[dict] = []
+
+    def _load_everyayah():
+        out = {}
         for track in everyayah_translation_tracks():
             lang = normalize_lang_code(track.get('language') or '')
             if not lang or lang == 'ar':
                 continue
-            everyayah_by_lang.setdefault(lang, track)
+            out.setdefault(lang, track)
         preferred_track_id_by_lang = {'en': 45, 'fa': 48, 'ur': 63, 'az': 50, 'bs': 72}
         for lang, tid in preferred_track_id_by_lang.items():
             tr = everyayah_find_track(tid)
             if tr:
-                everyayah_by_lang[lang] = tr
-    except Exception as exc:
-        logger.warning('everyayah translation catalog failed: %s', exc)
+                out[lang] = tr
+        return out
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        fut_ea = executor.submit(_load_everyayah)
+        fut_aq = executor.submit(alquran_translation_editions)
+        fut_fw = executor.submit(fawaz_translation_editions)
+
+        try:
+            everyayah_by_lang = fut_ea.result()
+        except Exception as exc:
+            logger.warning('everyayah translation catalog failed: %s', exc)
+        try:
+            all_editions.extend(fut_aq.result())
+        except Exception as exc:
+            logger.warning('alquran translation catalog failed: %s', exc)
+        try:
+            all_editions.extend(fut_fw.result())
+        except Exception as exc:
+            logger.warning('fawaz translation catalog failed: %s', exc)
 
     seen_keys = {'hafs_ar_text'}
-    all_editions: list[dict] = []
-
-    try:
-        all_editions.extend(alquran_translation_editions())
-    except Exception as exc:
-        logger.warning('alquran translation catalog failed: %s', exc)
-
-    try:
-        all_editions.extend(fawaz_translation_editions())
-    except Exception as exc:
-        logger.warning('fawaz translation catalog failed: %s', exc)
-
     for row in all_editions:
         key = row.get('key')
         if not key or key in seen_keys:

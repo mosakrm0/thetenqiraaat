@@ -1,3 +1,4 @@
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -75,6 +76,44 @@ class TestAppRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertEqual(len(data), 10)
+
+    def test_surahs_endpoint_returns_114_surahs_6236_ayahs(self):
+        resp = self.client.get('/api/surahs')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json()
+        surahs = payload.get('data', [])
+        self.assertEqual(len(surahs), 114)
+        self.assertEqual([s['number'] for s in surahs], list(range(1, 115)))
+        self.assertEqual(sum(s['numberOfAyahs'] for s in surahs), 6236)
+
+    def test_no_emojis_in_templates_or_static_js(self):
+        emoji_re = re.compile(r'[\U0001F300-\U0001FAFF\u2600-\u27BF\u25B6\u23F8\u2715\u2630\u21A9\u2709\u261D\uFE0F]')
+        root = Path(config.BASE_DIR)
+        files = list((root / 'templates').glob('*.html')) + list((root / 'static').glob('*.js'))
+        self.assertTrue(len(files) >= 8)
+        for path in files:
+            text = path.read_text(encoding='utf-8')
+            match = emoji_re.search(text)
+            if match is not None:
+                self.fail(f'Found emoji {match.group(0)!r} in {path}')
+
+    def test_js_files_wrapped_in_iife_no_global_redeclaration(self):
+        root = Path(config.BASE_DIR) / 'static'
+        for name in ('common.js', 'script.js', 'translations.js'):
+            text = (root / name).read_text(encoding='utf-8').strip()
+            self.assertIn('(function () {', text, f'{name} must be wrapped in an IIFE')
+            self.assertTrue(text.endswith('})();'), f'{name} must end with IIFE invocation')
+
+    def test_readings_and_translations_ssr_surah_list(self):
+        for route in ('/readings', '/translations'):
+            resp = self.client.get(route)
+            self.assertEqual(resp.status_code, 200)
+            html = resp.get_data(as_text=True)
+            self.assertNotIn('جاري تحميل الفهرس...', html)
+            self.assertIn('window.__INITIAL_SURAHS__', html)
+            self.assertIn('pickSurah(114)', html)
+        readings_html = self.client.get('/readings').get_data(as_text=True)
+        self.assertIn('الروايات الثماني المتوفرة رقمياً تعرض نصها العثماني الكامل', readings_html)
 
     def test_get_surah_with_variants_and_count_notes(self):
         resp = self.client.get('/api/surah/1?qiraat=hafs,warsh')

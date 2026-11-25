@@ -1,69 +1,72 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>مقارنة القراءات العشر القرآنية</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:wght@400;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:wght@400;700&family=Cairo:wght@400;700&family=JetBrains+Mono:wght@400;700&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/thetruetruth/quran-data-kfgqpc@main/css/kfgqpc.font.css">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<div id="app">
+<div class="sys-status-bar">
+  <span>النظام جاهز · القراءات العشر المتواترة · 114 سورة · 20 رواية</span>
+  <a href="/feedback" class="sys-status-link">تواصل واقتراحات</a>
+</div>
 
-  <div id="sidebar">
+<div id="app">
+  <aside id="sidebar" aria-label="فهرس السور">
     <div class="sb-head">
-      <button class="sb-close-btn" onclick="toggleSB()" aria-label="إغلاق القائمة" title="إغلاق القائمة">✕</button>
-      <div class="logo">
-        <span class="logo-icon">☽</span>
-        <div>
-          <div class="logo-title">مقارنة القراءات العشر</div>
-          <div class="logo-sub">١١٤ سورة · ٢٠ رواية</div>
-        </div>
+      <div class="sb-head-top">
+        <div class="logo-title">فهرس السور</div>
+        <button class="sb-close-btn v-btn" type="button" onclick="toggleSB()" aria-label="إغلاق القائمة">إغلاق</button>
       </div>
+      <div class="logo-sub mono">114 SURAH · LOCAL INDEX</div>
       <div class="sb-search">
-        <span class="sb-search-ic">🔍</span>
-        <input type="text" id="sb-q" placeholder="ابحث عن سورة..." oninput="filterSurahs(this.value)">
+        <input type="text" id="sb-q" placeholder="ابحث عن سورة..." oninput="filterSurahs(this.value)" aria-label="ابحث عن سورة">
       </div>
     </div>
     <div id="surah-list">
-      <div class="loader"><div class="loader-ring"></div><div class="loader-txt">جاري التحميل...</div></div>
+      {% for s in surahs %}
+      <button type="button" class="s-item" onclick="pickSurah({{ s.number }})">
+        <span class="s-num">{{ s.number }}</span>
+        <span class="s-name">{{ s.name }}</span>
+        <span class="s-count">{{ s.numberOfAyahs }}</span>
+      </button>
+      {% endfor %}
     </div>
-  </div>
+  </aside>
 
   <div id="main">
+    <header id="topbar">
+      <button id="toggle-sb" class="v-btn" type="button" onclick="toggleSB()" aria-label="تبديل القائمة">القائمة</button>
+      <div class="os-brand-mini">القراءات العشر</div>
+      <nav class="tabs" aria-label="أوضاع العرض">
+        <a class="tab" href="/">الرئيسية</a>
+        <button class="tab active" type="button" data-tab="mushaf" onclick="switchTab('mushaf')">صفحة المصحف</button>
+        <button class="tab" type="button" data-tab="compare" onclick="switchTab('compare')">مقارنة جانبية</button>
+        <a class="tab" href="/translations">الترجمات</a>
+        <a class="tab" href="/feedback">تواصل</a>
+      </nav>
+      <button id="theme-toggle" class="v-btn" type="button" onclick="toggleTheme()">النمط الداكن</button>
+    </header>
 
-    <div id="topbar">
-      <button id="toggle-sb" onclick="toggleSB()" aria-label="القائمة">☰</button>
-      <button id="theme-toggle" onclick="toggleTheme()" aria-label="تبديل الوضع" title="تبديل الوضع">☀️</button>
-      <div class="tabs">
-        <button class="tab active" data-tab="mushaf" onclick="switchTab('mushaf')">📖 صفحة المصحف</button>
-        <button class="tab" data-tab="compare" onclick="switchTab('compare')">⚖️ مقارنة جانبية</button>
-        <a class="tab" href="/translations" style="text-decoration:none;display:inline-flex;align-items:center">↩ الترجمات</a>
-        <a class="tab" href="/feedback" style="text-decoration:none;display:inline-flex;align-items:center">✉️ تواصل</a>
-      </div>
-      <div class="tb-info">
-        <div class="tb-name" id="tb-name">اختر سورة</div>
-        <div class="tb-meta" id="tb-meta">—</div>
-      </div>
-    </div>
-
-    <div id="qiraat-bar">
-      <button class="qbar-toggle" id="qbar-toggle" onclick="toggleQiraatBar()" aria-expanded="true">إخفاء الأدوات</button>
+    <section id="qiraat-bar" aria-label="أدوات القراءات">
+      <button class="qbar-toggle v-btn" type="button" id="qbar-toggle" onclick="toggleQiraatBar()" aria-expanded="true">إخفاء الأدوات</button>
       <div class="q-controls-row">
         <div class="q-presets">
-          <button type="button" class="preset-btn" onclick="applyPreset('kfgqpc')">الروايات الثمان الكاملة</button>
-          <button type="button" class="preset-btn" onclick="applyPreset('ten')">العشر الكبرى (رواية لكل إمام)</button>
-          <button type="button" class="preset-btn" onclick="applyPreset('clear')">مسح</button>
+          <button type="button" class="preset-btn v-btn" onclick="applyPreset('kfgqpc')">الروايات الثماني الكاملة</button>
+          <button type="button" class="preset-btn v-btn" onclick="applyPreset('ten')">العشر الكبرى (رواية لكل إمام)</button>
+          <button type="button" class="preset-btn v-btn" onclick="applyPreset('clear')">مسح</button>
         </div>
         <div class="range-wrap">
-          <span>من</span>
+          <label for="r-start">من</label>
           <input type="number" class="r-input" id="r-start" min="1" value="1">
-          <span>إلى</span>
+          <label for="r-end">إلى</label>
           <input type="number" class="r-input" id="r-end" min="1" value="7">
-          <button class="btn-go" onclick="loadContent()">عرض</button>
+          <button class="btn-go v-btn v-btn-primary" type="button" onclick="loadContent()">عرض</button>
         </div>
         <div class="audio-opts-wrap">
           <label class="opt-toggle" title="إبراز الكلمات المختلفة عن حفص">
@@ -82,21 +85,35 @@
         </div>
       </div>
       <div class="q-groups" id="q-groups"></div>
-      <div class="q-note">الروايات الثمان الكاملة تعرض النص العثماني المخصص من مجمع الملك فهد، وبقية الروايات تعرض نص حفص مع بيان أوجه الفرش والأصول وعدّ الآي المتاحة.</div>
-    </div>
+      <div class="q-note">الروايات الثماني المتوفرة رقمياً تعرض نصها العثماني الكامل، أما بقية الروايات فتعرض نص حفص كبديل مؤقت مع إبراز أوجه القراءة وعدّ الآي المتوفرة.</div>
+    </section>
 
     <div id="content">
-      <div class="empty-state">
-        <span class="empty-icon">☽</span>
-        <div class="empty-title">اختر سورة من القائمة</div>
-        <div class="empty-sub">ثم اضغط «عرض» لمشاهدة الآيات ومقارنة القراءات العشر</div>
+      <div class="workspace-hdr">
+        <div class="tb-name" id="tb-name">اختر سورة للبدء</div>
+        <div class="tb-meta" id="tb-meta">اختر سورة من الفهرس أو استخدم الاختصارات السريعة أدناه</div>
+      </div>
+      <div class="empty-state v-window">
+        <div class="v-titlebar">
+          <span>مقارنة القراءات العشر</span>
+          <span class="mono">READY</span>
+        </div>
+        <div class="v-window-body">
+          <div class="empty-title">اختر سورة من القائمة الجانبية</div>
+          <div class="empty-sub">ثم اضغط «عرض» لمشاهدة الآيات ومقارنة القراءات العشر.</div>
+          <div class="quick-picks">
+            <button type="button" class="v-btn v-btn-primary" onclick="pickSurah(1)">سورة الفاتحة</button>
+            <button type="button" class="v-btn" onclick="pickSurah(2)">سورة البقرة</button>
+            <button type="button" class="v-btn" onclick="pickSurah(112)">سورة الإخلاص</button>
+          </div>
+        </div>
       </div>
     </div>
-
   </div>
 </div>
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
+<script>window.__INITIAL_SURAHS__ = {{ surahs | tojson }};</script>
 <script src="/static/common.js"></script>
 <script src="/static/script.js"></script>
 </body>

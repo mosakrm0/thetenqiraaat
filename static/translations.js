@@ -1,6 +1,8 @@
 // translations.js — Translations comparison page
+(function () {
+  'use strict';
 
-const {
+  const {
   escHtml,
   escAttr,
   initTheme,
@@ -12,8 +14,7 @@ const {
   buildProxyAudioUrl,
 } = window.Common;
 
-const API_BASE = 'https://api.alquran.cloud/v1';
-const cache    = createCache('translations-cache-v2:');
+const cache = createCache('translations-cache-v2:');
 
 let allSurahs       = [];
 let curSurah        = null;
@@ -55,20 +56,21 @@ function setPlaybackSpeed(val) {
 
 function renderList(list) {
   const el = document.getElementById('surah-list');
+  if (!el) return;
   el.innerHTML = list.length
-    ? list.map(s => `<div class="s-item${curSurah?.number === s.number ? ' active' : ''}" onclick="pickSurah(${s.number})">
-        <div class="s-num">${s.number}</div>
-        <div class="s-name">${escHtml(s.name)}</div>
-        <div class="s-count">${s.numberOfAyahs} آية</div>
-      </div>`).join('')
-    : '<div style="text-align:center;padding:20px;color:var(--txt2)">لا نتائج</div>';
+    ? list.map(s => `<button type="button" class="s-item${curSurah?.number === s.number ? ' active' : ''}" onclick="pickSurah(${s.number})">
+        <span class="s-num">${s.number}</span>
+        <span class="s-name">${escHtml(s.name)}</span>
+        <span class="s-count">${s.numberOfAyahs}</span>
+      </button>`).join('')
+    : '<div class="loader"><div class="loader-txt">لا نتائج</div></div>';
 }
 
 function setState(pid, state) {
   const btn = document.getElementById(`pbtn-${pid}`);
   if (!btn) return;
   btn.className = `play-btn${state === 'playing' ? ' is-playing' : ''}`;
-  btn.textContent = state === 'playing' ? '⏸' : '▶';
+  btn.textContent = state === 'playing' ? 'إيقاف' : 'تشغيل';
 }
 
 function resetBar(pid) {
@@ -109,7 +111,7 @@ function stopAll() {
 function playerHTML(pid, url, entryKey = '', ayahNum = 0) {
   if (!url) return '<div class="audio-player disabled">لا يتوفر صوت</div>';
   return `<div class="audio-player" data-pid="${escAttr(pid)}" data-url="${escAttr(url)}" data-ekey="${escAttr(entryKey)}" data-ayah="${ayahNum}">
-    <button class="play-btn" id="pbtn-${escAttr(pid)}">▶</button>
+    <button type="button" class="play-btn" id="pbtn-${escAttr(pid)}">تشغيل</button>
     <div class="prog-track" id="ptrk-${escAttr(pid)}">
       <div class="prog-rail"><div class="prog-bar" id="pbar-${escAttr(pid)}"></div></div>
     </div>
@@ -227,11 +229,25 @@ function filterSurahs(q) {
 }
 
 async function loadSurahs() {
+  const el = document.getElementById('surah-list');
+  if (Array.isArray(window.__INITIAL_SURAHS__) && window.__INITIAL_SURAHS__.length) {
+    allSurahs = window.__INITIAL_SURAHS__;
+    renderList(allSurahs);
+    return;
+  }
   try {
-    const d = await getCachedJson(cache, { key: 'surah-list', url: `${API_BASE}/surah`, ttlMs: 1000 * 60 * 60 * 12 });
+    const d = await getCachedJson(cache, { key: 'surah-list-local-v1', url: '/api/surahs', ttlMs: 1000 * 60 * 60 * 24, retries: 2 });
     allSurahs = d.data || [];
     renderList(allSurahs);
-  } catch { toast('تعذّر تحميل السور'); }
+  } catch {
+    if (el) {
+      el.innerHTML = `<div class="loader">
+        <div class="loader-txt">تعذّر تحميل فهرس السور</div>
+        <button type="button" class="v-btn" style="margin-top:8px" onclick="loadSurahs()">إعادة المحاولة</button>
+      </div>`;
+    }
+    toast('تعذّر تحميل السور');
+  }
 }
 
 function languageLabel(code) {
@@ -289,17 +305,17 @@ function buildChips() {
   wrap.innerHTML = '';
 
   const items = getFilteredCatalog();
-  // Always keep selected items visible at the front even if search hides others
   const selectedItems = catalog.filter(x => selected.has(x.key) && !items.some(y => y.key === x.key));
   const toShow = [...selectedItems, ...items].slice(0, 60);
 
   toShow.forEach(item => {
-    const c = document.createElement('div');
+    const c = document.createElement('button');
+    c.type = 'button';
     c.className = `q-chip${selected.has(item.key) ? ' on' : ''}`;
     c.dataset.key = item.key;
     const label = `${languageLabel(item.language)} · ${item.name || item.englishName}`;
     c.title = label;
-    c.innerHTML = `<span class="dot" style="background:${item.has_audio ? '#4cc9a0' : '#c9a84c'}"></span>${escHtml(label)}${item.has_audio ? ' 🔊' : ''}`;
+    c.innerHTML = `<span class="dot" style="background:${item.has_audio ? '#16A34A' : '#808080'}"></span>${escHtml(label)}${item.has_audio ? ' [صوت]' : ''}`;
     c.onclick = () => {
       if (selected.has(item.key)) selected.delete(item.key);
       else selected.add(item.key);
@@ -319,19 +335,29 @@ function buildChips() {
 }
 
 async function loadCatalog() {
-  const d = await getCachedJson(cache, {
-    key: 'translations-catalog-v2',
-    url: '/api/translations/catalog',
-    ttlMs: 1000 * 60 * 60 * 12,
-  });
-  catalog = (d.items || []).filter(x => x.mode === 'ayah-text');
+  const wrap = document.getElementById('tr-chips');
+  try {
+    const d = await getCachedJson(cache, {
+      key: 'translations-catalog-v2',
+      url: '/api/translations/catalog',
+      ttlMs: 1000 * 60 * 60 * 12,
+      retries: 1,
+    });
+    catalog = (d.items || []).filter(x => x.mode === 'ayah-text');
 
-  if (selected.size <= 1) {
-    const en = catalog.find(x => x.edition === 'en.sahih') || catalog.find(x => (x.language || '') === 'en');
-    if (en) selected.add(en.key);
+    if (selected.size <= 1) {
+      const en = catalog.find(x => x.edition === 'en.sahih') || catalog.find(x => (x.language || '') === 'en');
+      if (en) selected.add(en.key);
+    }
+
+    buildChips();
+  } catch {
+    if (wrap) {
+      wrap.innerHTML = `<span class="tr-more-hint">تعذّر تحميل قائمة الترجمات</span>
+        <button type="button" class="v-btn" onclick="loadCatalog()">إعادة المحاولة</button>`;
+    }
+    toast('تعذّر تحميل قائمة الترجمات');
   }
-
-  buildChips();
 }
 
 function syncUrlState() {
@@ -374,11 +400,16 @@ async function pickSurah(num, rangeOverride = null) {
   sEl.value = rangeOverride?.start ? Math.max(1, Math.min(max, rangeOverride.start)) : 1;
   eEl.value = rangeOverride?.end ? Math.max(Number(sEl.value), Math.min(max, rangeOverride.end)) : Math.min(max, 7);
 
-  document.getElementById('tb-name').textContent = curSurah.name;
-  document.getElementById('tb-meta').textContent = `${curSurah.englishName} · ${max} آية`;
   renderList(filterArr(document.getElementById('sb-q').value));
-
   await loadContent();
+}
+
+function workspaceHeaderMarkup() {
+  if (!curSurah) return '';
+  return `<div class="workspace-hdr">
+    <div class="tb-name">${escHtml(curSurah.name)}</div>
+    <div class="tb-meta">${escHtml(curSurah.englishName)} · ${curSurah.numberOfAyahs} آية · ${selected.size} ترجمات محددة</div>
+  </div>`;
 }
 
 function entryLabel(e) {
@@ -404,32 +435,32 @@ function buildEntryCard(entry, ayah) {
   return `<div class="q-card">
     <div class="qc-label"><span class="qc-name">${escHtml(entryLabel(entry))}</span></div>
     <div class="qc-text" dir="${dir}">${escHtml(txt)}</div>
-    <div style="margin-top:8px">${playerHTML(pid, audioUrl, entry.key || '', ayah)}</div>
+    <div>${playerHTML(pid, audioUrl, entry.key || '', ayah)}</div>
   </div>`;
 }
 
 function renderMushafTranslations(data, start, end) {
-  let html = '';
+  let html = `${workspaceHeaderMarkup()}<div class="mushaf-page"><div class="mushaf-body">`;
   for (let ayah = start; ayah <= end; ayah++) {
     const cards = Object.values(data).map(entry => buildEntryCard(entry, ayah)).join('');
     html += `<section class="ayah-block">
-      <div class="ayah-master">﴿ ${ayah} ﴾</div>
+      <div class="ayah-master"><span>الآية</span><span class="ayah-badge">${ayah}</span></div>
       <div class="cards-row">${cards}</div>
     </section>`;
   }
+  html += '</div></div>';
   return html;
 }
 
 function renderCompareTranslations(data, start, end) {
   const entries = Object.values(data);
   const cols = Math.min(entries.length || 1, 3);
-  let html = `<div class="compare-grid" style="grid-template-columns:repeat(${cols},1fr)">`;
+  let html = `${workspaceHeaderMarkup()}<div class="compare-grid" style="grid-template-columns:repeat(${cols},1fr)">`;
 
   entries.forEach(entry => {
     html += `<div class="cmp-col">
       <div class="cmp-head">
         <div class="cmp-head-name">
-          <span class="qc-dot" style="background:#c9a84c"></span>
           ${escHtml(entryLabel(entry))}
         </div>
       </div>
@@ -444,7 +475,7 @@ function renderCompareTranslations(data, start, end) {
         <div class="cmp-num">${ayah}</div>
         <div style="flex:1;min-width:0">
           <div class="cmp-text" dir="${dir}">${escHtml(txt)}</div>
-          <div style="margin-top:8px">${playerHTML(pid, audioUrl, entry.key || '', ayah)}</div>
+          <div style="margin-top:6px">${playerHTML(pid, audioUrl, entry.key || '', ayah)}</div>
         </div>
       </div>`;
     }
@@ -461,7 +492,10 @@ function renderPayload(payload) {
   const maxAyah = Number(payload?.meta?.max_ayah || 0);
   const data = payload?.data || {};
   if (!maxAyah) {
-    content.innerHTML = '<div class="empty-state"><div class="empty-title">لا توجد بيانات ترجمة متاحة لهذه السورة</div></div>';
+    content.innerHTML = `${workspaceHeaderMarkup()}<div class="empty-state v-window">
+      <div class="v-titlebar"><span>تنبيه</span><span class="mono">EMPTY</span></div>
+      <div class="v-window-body"><div class="empty-title">لا توجد بيانات ترجمة متاحة لهذه السورة</div></div>
+    </div>`;
     return;
   }
 
@@ -485,6 +519,12 @@ async function loadContent() {
     return;
   }
   syncUrlState();
+  document.getElementById('content').innerHTML = `${workspaceHeaderMarkup()}
+    <div class="v-window" style="max-width:520px;margin:0 auto">
+      <div class="v-titlebar"><span>تحميل البيانات</span><span class="mono">WAIT</span></div>
+      <div class="loader"><div class="loader-ring"></div><div class="loader-txt">جاري تحميل الترجمات...</div></div>
+    </div>`;
+
   const keys = Array.from(selected);
   try {
     const payload = await getCachedJson(cache, {
@@ -494,8 +534,15 @@ async function loadContent() {
     });
     renderPayload(payload);
   } catch (err) {
-    document.getElementById('content').innerHTML =
-      `<div class="empty-state"><div class="empty-title">تعذر تحميل الترجمات</div><div class="empty-sub">${escHtml(err.message || err)}</div></div>`;
+    document.getElementById('content').innerHTML = `${workspaceHeaderMarkup()}
+      <div class="empty-state v-window">
+        <div class="v-titlebar"><span>خطأ</span><span class="mono">ERR</span></div>
+        <div class="v-window-body">
+          <div class="empty-title">تعذر تحميل الترجمات</div>
+          <div class="empty-sub">${escHtml(err.message || err)}</div>
+          <button type="button" class="v-btn v-btn-primary" onclick="loadContent()">إعادة المحاولة</button>
+        </div>
+      </div>`;
   }
 }
 
@@ -503,6 +550,8 @@ window.toggleSB = toggleSB;
 window.toggleQiraatBar = toggleQiraatBar;
 window.filterSurahs = filterSurahs;
 window.pickSurah = pickSurah;
+window.loadSurahs = loadSurahs;
+window.loadCatalog = loadCatalog;
 window.loadContent = loadContent;
 window.switchTab = switchTab;
 window.filterCatalog = filterCatalog;
@@ -527,7 +576,7 @@ window.setPlaybackSpeed = setPlaybackSpeed;
     if (b2) b2.classList.toggle('active', activeTab === 'compare');
   }
 
-  await Promise.all([loadCatalog(), loadSurahs()]);
+  await Promise.all([loadSurahs(), loadCatalog()]);
 
   const surahNum = Number(params.get('surah'));
   if (surahNum >= 1 && surahNum <= 114 && allSurahs.length) {
@@ -536,4 +585,5 @@ window.setPlaybackSpeed = setPlaybackSpeed;
       end: Number(params.get('end')) || null,
     });
   }
+  })();
 })();

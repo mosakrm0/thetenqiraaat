@@ -1,38 +1,52 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>تواصل واقتراحات</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:wght@400;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:wght@400;700&family=Cairo:wght@400;700&family=JetBrains+Mono:wght@400;700&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<div class="sys-status-bar">
+  <span>النظام جاهز · التواصل والاقتراحات</span>
+  <a href="/" class="sys-status-link">العودة للرئيسية</a>
+</div>
+
 <div id="app">
   <div id="main" style="width:100%">
-    <div id="topbar">
-      <div class="tabs">
-        <a class="tab" href="/" style="text-decoration:none;display:inline-flex;align-items:center">🏠 الصفحة الرئيسية</a>
-        <a class="tab" href="/readings" style="text-decoration:none;display:inline-flex;align-items:center">↩ صفحة القراءات</a>
-        <a class="tab" href="/translations" style="text-decoration:none;display:inline-flex;align-items:center">↩ صفحة الترجمات</a>
-      </div>
-      <button id="theme-toggle" onclick="toggleTheme()" aria-label="تبديل الوضع" title="تبديل الوضع">☀️</button>
-      <div class="tb-info">
+    <header id="topbar">
+      <div class="os-brand-mini">التواصل</div>
+      <nav class="tabs" aria-label="التنقل">
+        <a class="tab" href="/">الرئيسية</a>
+        <a class="tab" href="/readings">القراءات</a>
+        <a class="tab" href="/translations">الترجمات</a>
+        <a class="tab active" href="/feedback">تواصل</a>
+      </nav>
+      <button id="theme-toggle" class="v-btn" type="button" onclick="toggleTheme()">النمط الداكن</button>
+    </header>
+
+    <div id="content">
+      <div class="workspace-hdr">
         <div class="tb-name">تواصل واقتراحات</div>
-        <div class="tb-meta">أرسل شكوى، اقتراح، أو أي رسالة مباشرة</div>
+        <div class="tb-meta">أرسل شكوى، اقتراحاً، أو ملاحظة علمية لتحسين المنصة</div>
       </div>
-    </div>
 
-    <div id="content" style="padding:18px 16px">
-      <section class="feedback-wrap">
-        <h1 class="feedback-title">كيف يمكننا تحسين الموقع؟</h1>
-        <p class="feedback-sub">للتواصل السريع، راسلني مباشرة على الإيميل التالي:</p>
+      <section class="feedback-wrap v-window">
+        <div class="v-titlebar">
+          <span>رسالة مباشرة</span>
+          <span class="mono">CONTACT</span>
+        </div>
+        <div class="v-window-body">
+          <h1 class="feedback-title">كيف يمكننا تحسين الموقع؟</h1>
+          <p class="feedback-sub">للتواصل السريع، راسلنا مباشرة عبر البريد الإلكتروني التالي:</p>
 
-        <div class="fb-direct-contact">
-          <span>للتواصل المباشر:</span>
-          <a href="mailto:mosakram0@gmail.com" class="fb-email-link">mosakram0@gmail.com</a>
+          <div class="fb-direct-contact">
+            <span>البريد الإلكتروني:</span>
+            <a href="mailto:mosakram0@gmail.com" class="fb-email-link mono">mosakram0@gmail.com</a>
+          </div>
         </div>
       </section>
     </div>
