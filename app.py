@@ -123,6 +123,11 @@ def feedback_page():
     return render_template('feedback.html')
 
 
+@app.route('/intro')
+def intro_page():
+    return render_template('intro.html')
+
+
 _SURAHS_CACHE: list[dict] | None = None
 
 

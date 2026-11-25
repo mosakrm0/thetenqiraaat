@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>فيديو تعريفي — القراءات العشر</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:wght@400;700&family=Cairo:wght@400;700&family=JetBrains+Mono:wght@400;700&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="sys-status-bar">
+  <span>النظام جاهز · فيديو تعريفي بالمنصة</span>
+  <a href="/" class="sys-status-link">العودة للرئيسية</a>
+</div>
+
+<div id="app">
+  <div id="main" style="width:100%">
+    <header id="topbar">
+      <div class="os-brand-mini">فيديو تعريفي</div>
+      <nav class="tabs" aria-label="التنقل">
+        <a class="tab" href="/">الرئيسية</a>
+        <a class="tab" href="/readings">القراءات</a>
+        <a class="tab" href="/translations">الترجمات</a>
+        <a class="tab active" href="/intro">فيديو تعريفي</a>
+        <a class="tab" href="/feedback">تواصل</a>
+      </nav>
+      <button id="theme-toggle" class="v-btn" type="button" onclick="toggleTheme()">النمط الداكن</button>
+    </header>
+
+    <div id="content">
+      <div class="workspace-hdr">
+        <div class="tb-name">فيديو تعريفي</div>
+        <div class="tb-meta">تعرّف على المنصة وطريقة مقارنة القراءات العشر والترجمات آية بآية</div>
+      </div>
+
+      <section class="video-wrap v-window" aria-label="الفيديو التعريفي">
+        <div class="v-titlebar">
+          <span>الفيديو التعريفي</span>
+          <span class="mono">VIDEO</span>
+        </div>
+        <div class="v-window-body">
+          <div class="video-frame">
+            <iframe src="https://www.youtube.com/embed/EeFu2pcGobQ" title="فيديو تعريفي بمنصة القراءات العشر" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+          </div>
+          <div class="video-actions">
+            <a class="v-btn v-btn-primary" href="https://www.youtube.com/watch?v=EeFu2pcGobQ" target="_blank" rel="noopener noreferrer">مشاهدة على يوتيوب</a>
+            <a class="v-btn" href="/readings">فتح مقارنة القراءات</a>
+            <a class="v-btn" href="/translations">فتح مقارنة الترجمات</a>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="/static/common.js"></script>
+<script>Common.initTheme();</script>
+</body>
+</html>

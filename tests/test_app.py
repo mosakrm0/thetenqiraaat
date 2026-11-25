@@ -57,7 +57,7 @@ class TestAppRoutes(unittest.TestCase):
         self.tmpdir.cleanup()
 
     def test_pages_return_200(self):
-        for route in ('/', '/readings', '/translations', '/feedback'):
+        for route in ('/', '/readings', '/translations', '/intro', '/feedback'):
             resp = self.client.get(route)
             self.assertEqual(resp.status_code, 200, f'{route} failed')
 
@@ -251,9 +251,17 @@ class TestAppRoutes(unittest.TestCase):
             self.assertEqual(resp.status_code, 413)
 
     def test_responsive_markup_and_assets(self):
-        for route in ('/', '/readings', '/translations', '/feedback'):
+        for route in ('/', '/readings', '/translations', '/intro', '/feedback'):
             html = self.client.get(route).get_data(as_text=True)
             self.assertIn('viewport-fit=cover', html, f'{route} missing viewport-fit=cover')
+            self.assertIn('href="/intro"', html, f'{route} missing /intro nav link')
+
+        intro_html = self.client.get('/intro').get_data(as_text=True)
+        for token in ('https://www.youtube.com/embed/EeFu2pcGobQ', 'https://www.youtube.com/watch?v=EeFu2pcGobQ', 'فيديو تعريفي', 'video-frame'):
+            self.assertIn(token, intro_html, f'/intro missing {token}')
+
+        feedback_html = self.client.get('/feedback').get_data(as_text=True)
+        self.assertIn('https://github.com/mosakrm0/thetenqiraaat', feedback_html)
 
         for route in ('/readings', '/translations'):
             html = self.client.get(route).get_data(as_text=True)
@@ -261,7 +269,7 @@ class TestAppRoutes(unittest.TestCase):
 
         root = Path(config.BASE_DIR) / 'static'
         css = (root / 'style.css').read_text(encoding='utf-8')
-        for token in ('--cmp-cols', 'minmax(min(260px, 100%), 1fr)', '.sb-backdrop', 'pointer: coarse', '1024px', '900px', '768px', '480px', '360px'):
+        for token in ('--cmp-cols', 'minmax(min(260px, 100%), 1fr)', '.sb-backdrop', '.video-frame', 'aspect-ratio: 16 / 9', 'pointer: coarse', '1024px', '900px', '768px', '480px', '360px'):
             self.assertIn(token, css, f'style.css missing responsive rule: {token}')
 
         common_js = (root / 'common.js').read_text(encoding='utf-8')
