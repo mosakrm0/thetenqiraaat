@@ -374,6 +374,17 @@ class TestAppRoutes(unittest.TestCase):
         css = (root / 'static' / 'style.css').read_text(encoding='utf-8')
         self.assertIn(':focus:not(:focus-visible)', css)
 
+    def test_default_ayah_range_shows_all_ayahs(self):
+        root = Path(config.BASE_DIR)
+        for name in ('script.js', 'translations.js'):
+            js = (root / 'static' / name).read_text(encoding='utf-8')
+            self.assertNotIn('Math.min(max, 7)', js)
+            self.assertNotIn('|| 7', js)
+
+        for tpl in ('readings.html', 'translations.html'):
+            html = (root / 'templates' / tpl).read_text(encoding='utf-8')
+            self.assertNotIn('id="r-end" min="1" step="1" value="7"', html)
+
 
 if __name__ == '__main__':
     unittest.main()

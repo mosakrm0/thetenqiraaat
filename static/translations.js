@@ -617,7 +617,7 @@
     sEl.max = max;
     eEl.max = max;
     sEl.value = rangeOverride?.start ? Math.max(1, Math.min(max, rangeOverride.start)) : 1;
-    eEl.value = rangeOverride?.end ? Math.max(Number(sEl.value), Math.min(max, rangeOverride.end)) : Math.min(max, 7);
+    eEl.value = rangeOverride?.end ? Math.max(Number(sEl.value), Math.min(max, rangeOverride.end)) : max;
 
     renderList(filterArr(document.getElementById('sb-q').value));
     await loadContent();
@@ -640,7 +640,7 @@
     const sEl = document.getElementById('r-start');
     const eEl = document.getElementById('r-end');
     const start = Math.max(1, Math.trunc(Number(sEl.value)) || 1);
-    const endInput = Math.trunc(Number(eEl.value)) || start;
+    const endInput = Math.trunc(Number(eEl.value)) || maxAyah;
     const end = Math.min(maxAyah, Math.max(start, endInput));
     sEl.value = String(start);
     eEl.value = String(end);

@@ -241,7 +241,7 @@ async function pickSurah(num, rangeOverride = null) {
   startEl.max = max;
   endEl.max = max;
   startEl.value = rangeOverride?.start ? Math.max(1, Math.min(max, rangeOverride.start)) : 1;
-  endEl.value = rangeOverride?.end ? Math.max(Number(startEl.value), Math.min(max, rangeOverride.end)) : Math.min(max, 7);
+  endEl.value = rangeOverride?.end ? Math.max(Number(startEl.value), Math.min(max, rangeOverride.end)) : max;
 
   renderList(filterArr(document.getElementById('sb-q').value));
   await loadContent();
@@ -449,7 +449,7 @@ async function onReciterChange(qKey, newReciterId) {
   }
 
   const start = Math.trunc(Number(document.getElementById('r-start').value)) || 1;
-  const end = Math.trunc(Number(document.getElementById('r-end').value)) || 7;
+  const end = Math.trunc(Number(document.getElementById('r-end').value)) || curSurah.numberOfAyahs;
   if (window._lastRenderArgs) {
     const { textData, fallbackFlags, fetchMeta, variantsMap, countNotesMap } = window._lastRenderArgs;
     renderCurrentView(chosen, textData, start, end, resolvedAudioSources, fallbackFlags, fetchMeta, variantsMap, countNotesMap);
@@ -567,9 +567,9 @@ async function loadContent() {
 
   const startEl = document.getElementById('r-start');
   const endEl   = document.getElementById('r-end');
-  const start = Math.trunc(Number(startEl.value)) || 1;
-  const end   = Math.trunc(Number(endEl.value))   || 7;
   const max   = curSurah.numberOfAyahs;
+  const start = Math.trunc(Number(startEl.value)) || 1;
+  const end   = Math.trunc(Number(endEl.value))   || max;
   if (!Number.isFinite(start) || !Number.isFinite(end) || start < 1 || end > max || start > end) {
     toast(`المدى يجب بين 1 و${max}`);
     return;
